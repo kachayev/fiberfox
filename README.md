@@ -1,4 +1,4 @@
-# fiberfox 🦊 
+# 🦊  Fiberfox 
 
 High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking.
 
