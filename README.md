@@ -1,4 +1,4 @@
-# FiberFox 🦊
+# fiberfox 🦊 
 
 High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking.
 
@@ -24,12 +24,26 @@ From PyPI:
 $ pip install fiberfox
 ```
 
+Build Docker image:
+
+```shell
+$ git clone https://github.com/kachayev/fiberfox.git
+$ cd fiberfox
+$ docker build -t fiberfox .
+```
+
 ## Usage
 
 Example:
 
 ```shell
-$ fiberfox --targets tcp://127.0.0.1:8080 http://127.0.0.1:8081 --num-fibers 512 --rpc 1024 --strategy STRESS -t 3600 --proxies ./proxies.txt
+$ fiberfox \
+    --targets tcp://127.0.0.1:8080 http://127.0.0.1:8081 \
+    --num-fibers 512 \
+    --rpc 1024 \
+    --strategy STRESS \
+    -exec-time-seconds 3600 \
+    --proxies ./proxies.txt
 ```
 
 Features:
