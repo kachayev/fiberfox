@@ -1,4 +1,5 @@
 asks==2.4.12
+certifi==2021.10.8
 curio==1.5
 python-socks==2.0.3
 sparklines==0.4.2

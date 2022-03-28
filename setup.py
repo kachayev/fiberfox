@@ -3,6 +3,9 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf8") as f:
     readme = f.read()
 
+with open("requirements.txt", "r", encoding="utf8") as f:
+    requirements = [line.strip() for line in f.readlines() if line.strip()]
+
 setup(
     name="fiberfox",
     version="0.2.0",
@@ -13,6 +16,7 @@ setup(
             "fiberfox = fiberfox.main:run",
         ]
     },
+    install_requires=requirements,
     author="Oleksii Kachaiev",
     author_email="kachayev@gmail.com",
     description="High-performance DDoS vulnerability testing toolkit. Various L4/7 attack vectors. Async networking.",
