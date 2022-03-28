@@ -1,0 +1,6 @@
+asks==2.4.12
+curio==1.5
+python-socks==2.0.3
+sparklines==0.4.2
+tabulate==0.8.9
+yarl~=1.7.2
