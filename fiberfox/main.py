@@ -682,11 +682,12 @@ def parse_args(available_strategies):
         default=8,
         help="Number of fibers per target (for TCP means max number of open connections)"
     )
-    parser.add_argument( # xxx(okachaiev): this one should be "choice"
+    parser.add_argument(
         "-s",
         "--strategy",
         default="STRESS",
-        help="Flood strategy to utilize: TCP, STRESS, BYPASS"
+        choices=[s.upper() for s in default_strategies.keys()],
+        help="Flood strategy to utilize"
     )
     parser.add_argument(
         "--rpc",
