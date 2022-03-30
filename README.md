@@ -1,6 +1,6 @@
 # FiberFox 🦊  
 
-High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking.
+High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking (thousands of active connections with <100Mb of memory).
 
 Heavily inspired by [MHDDoS](https://github.com/MHProDev/MHDDoS) project.
 
