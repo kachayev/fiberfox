@@ -85,11 +85,15 @@ Note: the package is under active development, more methods will be added soon.
 
 * `UDP`
 * `TCP`
+* `CONNECTION`
 
 ### L7
 
 * `BYPASS`
 * `STRESS`
+* `CFBUAM`
+* `SLOW`
+* `AVB`
 
 ## Analysis
 

