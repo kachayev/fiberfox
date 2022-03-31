@@ -39,40 +39,44 @@ Example:
 ```shell
 $ fiberfox \
     --targets tcp://127.0.0.1:8080 http://127.0.0.1:8081 \
-    --num-fibers 512 \
+    --concurrency 512 \
     --rpc 1024 \
     --strategy STRESS \
-    -exec-time-seconds 3600 \
-    --proxies ./proxies.txt
+    --duration-seconds 3600 \
+    --proxies-list ./proxies.txt
 ```
 
 Features:
-* `--num-fibers` defines number of async coroutines to run. Fiber doesn't create a new OS thread so you can run a lot of them with small overhead. For TCP attack vectors, number of fibers rougly corresponds to the max number of open TCP connections. For UDP attacks, running too many fibers typically makes performance worse.
-* Muliple targets are supported. `--num-fibers` options defines number of fibers per target.
+* `--concurrency` (or `-c`) defines number of async coroutines to run. Fiber doesn't create a new OS thread so you can run a lot of them with small overhead. For TCP attack vectors, number of fibers rougly corresponds to the max number of open TCP connections. For UDP attacks, running too many fibers typically makes performance worse.
+* Muliple targets are supported. `--concurrency` (`-c`) option defines number of fibers per target.
 * Connections could be established using HTTP/SOCK4/SOCK5 proxies. Available proxies could be setup from the static configuration file or dynamically resolved from proxy providers. The tool automatically detects "dead" proxies and removes them from the pool.
 
 More documentation about flags:
 
 ```
-% fiberfox --help
-usage: fiberfox [-h] [--targets [TARGETS ...]] [-n NUM_FIBERS] [-s STRATEGY] [--rpc RPC] [--packet-size PACKET_SIZE] [-t EXEC_TIME_SECONDS] [-p PROVIDERS_CONFIG] [--proxies PROXIES]
+$ python fiberfox --help
+usage: fiberfox [-h] [--targets [TARGETS ...]] [-c CONCURRENCY] [-s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}] [--rpc RPC] [--packet-size PACKET_SIZE] [-d DURATION_SECONDS]
+               [--providers-config PROVIDERS_CONFIG] [--proxies-list PROXIES_LIST] [--proxies [PROXIES ...]]
 
 options:
   -h, --help            show this help message and exit
   --targets [TARGETS ...]
                         List of targets, separated by spaces (if many)
-  -n NUM_FIBERS, --num-fibers NUM_FIBERS
+  -c CONCURRENCY, --concurrency CONCURRENCY
                         Number of fibers per target (for TCP means max number of open connections)
-  -s STRATEGY, --strategy STRATEGY
-                        Flood strategy to utilize: UDP, TCP, STRESS, BYPASS
+  -s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}, --strategy {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}
+                        Flood strategy to utilize
   --rpc RPC             Number of requests to be sent to each connection
   --packet-size PACKET_SIZE
                         Packet size (in bytes)
-  -t EXEC_TIME_SECONDS, --exec-time-seconds EXEC_TIME_SECONDS
+  -d DURATION_SECONDS, --duration-seconds DURATION_SECONDS
                         How long to keep sending packets, in seconds
-  -p PROVIDERS_CONFIG, --providers-config PROVIDERS_CONFIG
+  --providers-config PROVIDERS_CONFIG
                         Configuration file with proxy providers
-  --proxies PROXIES     List proxies (ip:port, line-separated)
+  --proxies-list PROXIES_LIST
+                        List proxies
+  --proxies [PROXIES ...]
+                        List of proxy servers, separated by spaces (if many)
 ```
 
 ## Attack Vectors
