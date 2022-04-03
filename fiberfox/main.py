@@ -205,7 +205,11 @@ class Stats:
         if self._hist_buckets > 0:
             packets_sent = self.current_session[fid]
             bucket = int(self._hist_buckets*packets_sent/self._hist_max)
-            self.packets_per_session[bucket] += packets_sent
+            try: 
+                self.packets_per_session[bucket] += packets_sent
+            except IndexError:
+                # xxx(okachaiev): fix this later
+                pass
             self.current_session[fid] = 0
 
 
