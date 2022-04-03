@@ -26,22 +26,26 @@ def cookie_challenge(html: str):
 def qrator(target_url: str, num_requests: int, challenge: str):
     random.seed(time.time())
     total_traffic = 0
-    with requests.session() as s:
-        print("==> Sending initial request")
-        with s.get(target_url) as resp:
-            print(f"resp code={resp.status_code}, size={humanbytes(len(resp.content))}")
-            for k, v in resp.cookies.items():
-                s.cookies.set(k, v)
-            if resp.status_code == 429 and challenge == "":
-                challenge = cookie_challenge(resp.text)
-                print(f"⛰  cookie challenged: {challenge}")
-            s.cookies.set(QRATOR_COOKIE_NAME, challenge)
-        for ind in range(num_requests):
-            time.sleep(random.random())
-            print(f"==> Signed request #{ind+1}")
+    for _ in range(10):
+        with requests.session() as s:
+            print("==> Sending initial request")
             with s.get(target_url) as resp:
                 print(f"resp code={resp.status_code}, size={humanbytes(len(resp.content))}")
-                total_traffic += len(resp.content)
+                for k, v in resp.cookies.items():
+                    s.cookies.set(k, v)
+                if resp.status_code == 429 and challenge == "":
+                    challenge = cookie_challenge(resp.text)
+                    print(f"⛰  cookie challenged: {challenge}")
+                s.cookies.set(QRATOR_COOKIE_NAME, challenge)
+            for ind in range(num_requests):
+                time.sleep(random.random()*60+10)
+                print(f"==> Signed request #{ind+1}")
+                with s.get(target_url) as resp:
+                    print(f"resp code={resp.status_code}, size={humanbytes(len(resp.content))}")
+                    total_traffic += len(resp.content)
+                    for k, v in resp.cookies.items():
+                        s.cookies.set(k, v)
+        challenge = ""
     print(f"🥃 traffic {humanbytes(total_traffic)}")
 
 
