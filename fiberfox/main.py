@@ -32,6 +32,13 @@ except ImportError:
     from os import urandom
     randbytes = urandom
 
+# fix issue with thread cancel for Python3.7/8
+try:
+    import ctypes
+    libgcc_s = ctypes.CDLL('libgcc_s.so.1')
+except OSError:
+    pass
+
 # todo:
 # * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
 # * stats: better numbers, on KeyboardInterrupt, list of errors
