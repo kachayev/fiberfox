@@ -309,10 +309,13 @@ referrers: List[str] = [
 
 # xxx(okachaiev): would be good to have a library to manage encodings only
 def http_req_get(target: Target) -> bytes:
-    version = choice(["1.1", "1.2"])
     return (
-        f"GET {target.url.raw_path_qs} HTTP/{version}\r\n"
-        f"Host: {target.url.authority}\r\n\r\n"
+        f"GET {target.url.raw_path_qs} HTTP/1.1\r\n"
+        f"Host: {target.url.authority}\r\n"
+        "Accept-Encoding: gzip, deflate\r\n"
+        "Accept: */*\r\n"
+        "Connection: keep-alive\r\n"
+        "\r\n"
     ).encode()
 
 
@@ -494,7 +497,7 @@ async def GET(ctx: Context, fid: int, target: Target):
     Layer: L7.
     """
     async def gen():
-        req: bytes = http_req_payload(target, "GET")
+        req: bytes = http_req_get(target)
         for _ in range(ctx.rpc):
             yield req
 
