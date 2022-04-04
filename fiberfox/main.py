@@ -155,8 +155,8 @@ class ProxySet:
         if num_alive + num_dead == 0:
             return "ProxySet[empty]"
         else:
-            ratio = num_alive/(num_alive + num_dead)
-            return f"ProxySet[{num_alive}/{num_alive+num_dead} {ratio:0.1f}%]"
+            ratio = 100*num_alive/(num_alive + num_dead)
+            return f"ProxySet[{num_alive}/{num_alive+num_dead} {ratio:0.2f}%]"
 
     @classmethod
     def from_list(cls, proxies: List[str]) -> "ProxySet":
