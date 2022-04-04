@@ -15,7 +15,7 @@ from math import log2, trunc
 from pathlib import Path
 from python_socks import ProxyTimeoutError
 from python_socks.async_.curio import Proxy
-from random import choice, randbytes, randrange
+from random import choice, randrange
 import re
 import socket as syncsocket
 from sparklines import sparklines
@@ -26,6 +26,11 @@ from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, U
 from yarl import URL
 from urllib import parse
 
+try:
+    from random import randbytes
+except ImportError:
+    from os import urandom
+    randbytes = urandom
 
 # todo:
 # * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
@@ -314,6 +319,7 @@ def http_req_payload(
     referrer = choice(referrers) + parse.quote(target.url.human_repr())
     parts = [
         f"{req_type} {target.url.raw_path_qs} HTTP/{version}",
+        f"Host: {target.url.authority}",
         f"User-Agent: {user_agent}",
         f"Referrer: {referrer}",
         "Accept-Encoding: gzip, deflate, br",
@@ -323,14 +329,13 @@ def http_req_payload(
         "Sec-Fetch-Dest: document",
         "Sec-Fetch-Mode: navigate",
         "Sec-Fetch-Site: none",
-        "Sec-Fetch-User: ?1",
+        "Sec-Fetch-User: 1",
         "Sec-Gpc: 1",
         "Pragma: no-cache",
-        f"Host: {target.url.authority}",
     ]
     if req:
         parts += req
-    return "\r\n".join(parts).encode()
+    return ("\r\n".join(parts) + "\r\n\r\n").encode()
 
 
 def rand_str(size: int) -> str:
