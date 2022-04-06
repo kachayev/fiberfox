@@ -105,6 +105,13 @@ class Target:
         return SSL_CTX
 
 
+def load_targets_config(path: Path) -> Generator[Target, None, None]:
+    with args.targets_config.open("r") as f:
+        for line in f.readlines():
+            if line.strip():
+                yield arget.from_string(line.strip())
+
+
 def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
     if proxy_type == 4: return "socks4"
     if proxy_type == 5: return "socks5"
@@ -215,7 +222,7 @@ class Stats:
         self.current_session: Dict[int, int] = defaultdict(int)
         # the last bucket is dedicated for 100% succesfull execution only
         self.packets_per_session: List[int] = [0]*(self._hist_buckets+1)
-        self.sessions: int = 0
+        self.num_sessions: int = 0
 
     def track_packet_sent(self, fid: int, size: int) -> None:
         self.total_bytes_sent += size
@@ -224,7 +231,7 @@ class Stats:
             self.current_session[fid] += 1
 
     def start_session(self, fid: Optional[int] = None) -> None:
-        self.sessions += 1
+        self.num_sessions += 1
 
     def reset_session(self, fid: int) -> None:
         if self._hist_buckets > 0:
@@ -292,7 +299,10 @@ class Context:
 
     @classmethod
     def from_args(cls, args: Namespace) -> "Context":
-        targets = [Target.from_string(t.strip()) for t in args.targets]
+        targets = []
+        if args.targets_config is not None:
+            targets.extend(load_targets_config(args.targets_config))
+        targets.extend([Target.from_string(t.strip()) for t in args.targets])
         return cls(
             args=args,
             targets=targets,
@@ -664,7 +674,7 @@ async def DGB(ctx: Context, fid: int, target: Target):
     """
     pass
 
-async def flood_fiber(fid: int, ctx: Context, target: Target):
+async def flood_fiber(ctx: Context, fid: int, target: Target):
     ctx.start_session(fid, target)
     # run a flood session (for TCP connections this would typically mean
     # sending RPC number of packets)
@@ -674,7 +684,7 @@ async def flood_fiber(fid: int, ctx: Context, target: Target):
     ctx.reset_session(fid, target)
 
 
-async def flood_fiber_loop(fid: int, ctx: Context):
+async def flood_fiber_loop(ctx: Context, fid: int):
     while True:
         target = next(ctx.targets_iter)
         await flood_fiber(ctx, fid, target)
@@ -704,7 +714,7 @@ async def flood(ctx: Context):
     print(f"==> Launching {ctx.num_fibers} fibers "
           f"testing {len(ctx.targets)} targets for {ctx.duration_seconds}s")
     for fid in range(ctx.num_fibers):
-        await group.spawn(flood_fiber_loop, fid, ctx)
+        await group.spawn(flood_fiber_loop, ctx, fid)
 
     started_at = time.time()
     while time.time() < started_at + ctx.duration_seconds:
@@ -743,6 +753,7 @@ def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
         buckets = ctx.stats[target.url].packets_per_session
         rows.append([
             target.url,
+            ctx.stats[target.url].num_sessions,
             ctx.stats[target.url].packets_sent,
             bytes_sent_repr,
             rate+"/s",
@@ -752,7 +763,7 @@ def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
         f"{sign} Time spent: {elapsed_seconds:0.2f}s, "
         f"errors registered: {ctx.num_errors}. "
         f"Enjoy the results:")
-    print(tabulate(rows, headers=["Target", "Packets", "Traffic", "Rate", "Sessions"]))
+    print(tabulate(rows, headers=["Target", "Sessions", "Packets", "Traffic", "Rate", "Quality"]))
 
 
 default_strategies = {
@@ -774,6 +785,12 @@ def parse_args(available_strategies):
         "--targets",
         nargs="*",
         help="List of targets, separated by spaces (if many)"
+    )
+    parser.add_argument(
+        "--targets-config",
+        type=Path,
+        default=None,
+        help="File with the list of targets (target per line)"
     )
     parser.add_argument(
         "-c",
@@ -839,8 +856,8 @@ def parse_args(available_strategies):
     )
     args = parser.parse_args()
 
-    if not args.targets:
-        raise ValueError("Targets list is empty")
+    if not args.targets and args.targets_config is None:
+        raise ValueError("Targets list is empty and targets config is not provided")
 
     if args.providers_config and not args.providers_config.exists():
         raise ValueError("Proxy providers configuration file does not exist")
