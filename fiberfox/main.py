@@ -106,10 +106,10 @@ class Target:
 
 
 def load_targets_config(path: Path) -> Generator[Target, None, None]:
-    with args.targets_config.open("r") as f:
+    with path.open("r") as f:
         for line in f.readlines():
             if line.strip():
-                yield arget.from_string(line.strip())
+                yield Target.from_string(line.strip())
 
 
 def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
@@ -302,7 +302,7 @@ class Context:
         targets = []
         if args.targets_config is not None:
             targets.extend(load_targets_config(args.targets_config))
-        targets.extend([Target.from_string(t.strip()) for t in args.targets])
+        targets.extend(Target.from_string(t.strip()) for t in args.targets or [])
         return cls(
             args=args,
             targets=targets,
