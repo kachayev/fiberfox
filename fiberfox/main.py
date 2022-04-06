@@ -785,7 +785,7 @@ def parse_args(available_strategies):
     parser.add_argument(
         "-s",
         "--strategy",
-        default="STRESS",
+        default="TCP",
         choices=[s.upper() for s in default_strategies.keys()],
         help="Flood strategy to utilize"
     )
