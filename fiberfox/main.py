@@ -172,9 +172,10 @@ async def try_connect_proxy(
 
 class ProxySet:
 
-    def __init__(self, proxies: List[str]):
+    def __init__(self, proxies: List[str], is_empty: bool = False):
         self._proxies = set(proxies)
         self._dead_proxies: Dict[str, int] = {}
+        self._is_empty = is_empty
 
     def __len__(self) -> int:
         return len(self._proxies)
@@ -197,15 +198,21 @@ class ProxySet:
             ratio = 100*num_alive/(num_alive + num_dead)
             return f"ProxySet[{num_alive}/{num_alive+num_dead} {ratio:0.2f}%]"
 
+    def human_repr(self):
+        return "" if self._is_empty else str(self)
+
+    @classmethod
+    def empty(cls) -> "ProxySet":
+        return cls(proxies=[], is_empty=True)
+
     @classmethod
     def from_list(cls, proxies: List[str]) -> "ProxySet":
         return cls(proxies=[p.strip() for p in proxies if p.strip()])
 
     @classmethod
     def from_file(cls, path: Union[str, Path]) -> "ProxySet":
-        with open(path) as f:
-            proxies = f.read().splitlines()
-        return cls.from_list(proxies)
+        content = load_file(path)
+        return cls.from_list(content.splitlines())
 
     @classmethod
     async def from_providers(cls, ctx: "Context", providers: List[Any]) -> "ProxySet":
@@ -224,8 +231,8 @@ class ProxySet:
 
     @classmethod
     def from_providers_config(cls, ctx: "Context", path: str) -> "ProxySet":
-        with open(path) as f:
-            providers = json.load(f)["proxy-providers"]
+        content = load_file(path)
+        providers = json.loads(content)["proxy-providers"]
         return cls.from_providers(ctx, providers)
 
 
@@ -727,14 +734,14 @@ async def flood_fiber_loop(ctx: Context, fid: int):
 async def load_proxies(ctx: Context):
     if ctx.args.proxies:
         proxy_set = ProxySet.from_list(ctx.args.proxies)
-    elif ctx.args.proxies_list:
-        proxy_set = ProxySet.from_file(ctx.args.proxies_list)
+    elif ctx.args.proxies_config:
+        proxy_set = ProxySet.from_file(ctx.args.proxies_config)
     elif ctx.args.providers_config:
         print(f"==> Loading proxy servers from providers")
         # xxx(okachaiev): cache into file
-        proxy_set = await ProxySet.from_providers_config(ctx, ctx.args.providers_config)
+        proxy_set = await ProxySet.from_providers_config(ctx, ctx.args.proxy_providers_config)
     else:
-        proxy_set = ProxySet(proxies=[])
+        proxy_set = ProxySet.empty()
     if proxy_set:
         print(f"☂ Loaded {len(proxy_set)} proxies")
     ctx.proxies = proxy_set
@@ -775,7 +782,7 @@ def show_stats(ctx: Context, elapsed_seconds: int, sign="🦊"):
         ctx.logger.info(
             f"{sign} {target.url}\t{progress:0.2f}%\t"
             f"Sent {bytes_sent_repr} in {elapsed_seconds:0.2f}s ({rate}ps)\t"
-            f"{ctx.proxies}")
+            f"{ctx.proxies.human_repr()}")
 
 
 def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
@@ -824,7 +831,7 @@ def parse_args(available_strategies):
         "--targets-config",
         type=str,
         default=None,
-        help="File with the list of targets (target per line). Could be a local file or a link to remote resource."
+        help="File with the list of targets (target per line). Both local and remote files are supported."
     )
     parser.add_argument(
         "-c",
@@ -860,16 +867,16 @@ def parse_args(available_strategies):
         help="How long to keep sending packets, in seconds"
     )
     parser.add_argument(
-        "--providers-config",
-        type=Path,
+        "--proxy-providers-config",
+        type=str,
         default=None,
-        help="Configuration file with proxy providers"
+        help="Configuration file with proxy providers. Both local and remote files are supported."
     )
     parser.add_argument(
-        "--proxies-list",
-        type=Path,
+        "--proxies-config",
+        type=str,
         default=None,
-        help="List proxies"
+        help="File with a list of proxy servers (newline-delimted). Both local and remote files are supported."
     )
     parser.add_argument(
         "--proxies",
@@ -892,12 +899,6 @@ def parse_args(available_strategies):
 
     if not args.targets and args.targets_config is None:
         raise ValueError("Targets list is empty and targets config is not provided")
-
-    if args.providers_config and not args.providers_config.exists():
-        raise ValueError("Proxy providers configuration file does not exist")
-
-    if args.proxies_list and not args.proxies_list.exists():
-        raise ValueError("File with proxies does not exist")
 
     args.strategy = available_strategies[args.strategy.lower()]
 
