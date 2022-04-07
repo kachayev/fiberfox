@@ -736,7 +736,7 @@ async def load_proxies(ctx: Context):
         proxy_set = ProxySet.from_list(ctx.args.proxies)
     elif ctx.args.proxies_config:
         proxy_set = ProxySet.from_file(ctx.args.proxies_config)
-    elif ctx.args.providers_config:
+    elif ctx.args.proxy_providers_config:
         print(f"==> Loading proxy servers from providers")
         # xxx(okachaiev): cache into file
         proxy_set = await ProxySet.from_providers_config(ctx, ctx.args.proxy_providers_config)

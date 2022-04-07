@@ -45,7 +45,7 @@ $ fiberfox \
     --rpc 1024 \
     --strategy STRESS \
     --duration-seconds 3600 \
-    --proxies-list ./proxies.txt
+    --proxies-config ./proxies.txt
 ```
 
 Features:
@@ -57,28 +57,35 @@ More documentation about flags:
 
 ```
 $ python fiberfox --help
-usage: fiberfox [-h] [--targets [TARGETS ...]] [-c CONCURRENCY] [-s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}] [--rpc RPC] [--packet-size PACKET_SIZE] [-d DURATION_SECONDS]
-               [--providers-config PROVIDERS_CONFIG] [--proxies-list PROXIES_LIST] [--proxies [PROXIES ...]]
+usage: fiberfox [-h] [--targets [TARGETS ...]] [--targets-config TARGETS_CONFIG] [-c CONCURRENCY] [-s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB,GET}] [--rpc RPC] [--packet-size PACKET_SIZE]
+               [-d DURATION_SECONDS] [--proxy-providers-config PROXY_PROVIDERS_CONFIG] [--proxies-config PROXIES_CONFIG] [--proxies [PROXIES ...]] [--log-level {DEBUG,INFO,ERROR,WARN}]
+               [--connection-timeout-seconds CONNECTION_TIMEOUT_SECONDS]
 
 options:
   -h, --help            show this help message and exit
   --targets [TARGETS ...]
                         List of targets, separated by spaces (if many)
+  --targets-config TARGETS_CONFIG
+                        File with the list of targets (target per line). Both local and remote files are supported.
   -c CONCURRENCY, --concurrency CONCURRENCY
-                        Number of fibers per target (for TCP means max number of open connections)
-  -s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}, --strategy {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB}
+                        Total number of fibers (for TCP attacks means max number of open connections)
+  -s {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB,GET}, --strategy {UDP,TCP,STRESS,BYPASS,CONNECTION,SLOW,CFBUAM,AVB,GET}
                         Flood strategy to utilize
   --rpc RPC             Number of requests to be sent to each connection
   --packet-size PACKET_SIZE
                         Packet size (in bytes)
   -d DURATION_SECONDS, --duration-seconds DURATION_SECONDS
                         How long to keep sending packets, in seconds
-  --providers-config PROVIDERS_CONFIG
-                        Configuration file with proxy providers
-  --proxies-list PROXIES_LIST
-                        List proxies
+  --proxy-providers-config PROXY_PROVIDERS_CONFIG
+                        Configuration file with proxy providers. Both local and remote files are supported.
+  --proxies-config PROXIES_CONFIG
+                        File with a list of proxy servers (newline-delimted). Both local and remote files are supported.
   --proxies [PROXIES ...]
                         List of proxy servers, separated by spaces (if many)
+  --log-level {DEBUG,INFO,ERROR,WARN}
+                        Log level (defaults to INFO)
+  --connection-timeout-seconds CONNECTION_TIMEOUT_SECONDS
+                        Proxy connection timeout in seconds (default: 10s)
 ```
 
 ## Attack Vectors
