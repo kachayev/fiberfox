@@ -2,13 +2,19 @@
 
 High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking (thousands of active connections with <100Mb of memory).
 
-Heavily inspired by [MHDDoS](https://github.com/MHProDev/MHDDoS) project.
+WARNING: Do not test infrastructure (servers, websites, network devices, etc) without owner's consent. Package default settings are tuned to avoid large impact when running tests.
 
-WARNING: Do not test websites without their owners consent. Package default settings are tuned to avoid large impact when running tests.
+Inspired by [MHDDoS](https://github.com/MHProDev/MHDDoS) project.
 
 ![analysis](docs/fiberfox_analysis.png)
 
 ## Install
+
+From PyPI:
+
+```shell
+$ pip install fiberfox
+```
 
 From sources:
 
@@ -16,12 +22,6 @@ From sources:
 $ git clone https://github.com/kachayev/fiberfox.git
 $ cd fiberfox
 $ python setup.py install
-```
-
-From PyPI:
-
-```shell
-$ pip install fiberfox
 ```
 
 Build Docker image:
@@ -93,15 +93,18 @@ Note: the package is under active development, more methods will be added soon.
 
 ### L7
 
-* `BYPASS`
+* `GET`
 * `STRESS`
+* `BYPASS`
 * `CFBUAM`
 * `SLOW`
 * `AVB`
 
 ## Analysis
 
-The tool reports number of statistics per each target: number of packets, traffic, rate. For TCP-based attacks (both L4 and L7), it also reports histogram of packets sent within a single session (session here means traffic sent within a single open connection). Ideally, the histogram should be skewed towards right side. If otherwise is true, it means the peer closes connection earlier than "requests per connection" packets were sent. This might indicate that the attack strategy choosen is not effective. 
+The tool reports number of statistics per each target: number of packets, traffic, rate. For TCP-based attacks (both L4 and L7), it also reports histogram of packets sent within a single session (session here means traffic sent within a single open connection). Ideally, the histogram should be skewed towards left side. It means the peer closes connection earlier than "requests per connection" packets were sent. If it's mainly on the right, the target accepts what should be considered "garbage traffic".
+
+Be careful with analysis. Low network rate, high frequency of connection attempts, high error rate, and more. All of those signals might indicate both the fact that the target stays storng facing the attack and that it's already dead. To get full understanding of the level of protection, you should use monitoring information on the target side (e.g. capability to work correctly when being challenged).
 
 ## Contribute
 
