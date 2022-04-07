@@ -1,6 +1,8 @@
 # FiberFox 🦊  
 
-High-performance DDoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Low CPU/RAM requirements with async networking (thousands of active connections with <100Mb of memory).
+High-performance (D)DoS vulnerability testing toolkit. Implements various L4/7 attack vectors. Async approach to networking helps to lower CPU/RAM requirements while performing even those attacks that are known to be problematic from implmenetation perspective.
+
+NOTE: The toolkit doesn't have capabilities needed for proper performance testing of the target servers or networks. The goal is to understand level of protection, by performing attacks specially designed to abuse common pitfalls and to bypass common protection measures.
 
 WARNING: Do not test infrastructure (servers, websites, network devices, etc) without owner's consent. Package default settings are tuned to avoid large impact when running tests.
 
