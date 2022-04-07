@@ -18,6 +18,7 @@ from python_socks import ProxyTimeoutError
 from python_socks.async_.curio import Proxy
 from random import choice, randint, randrange
 import re
+import requests
 import socket as syncsocket
 from sparklines import sparklines
 import string
@@ -27,6 +28,7 @@ import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Union
 from yarl import URL
 from urllib import parse
+from urllib.request import urlopen
 
 try:
     from random import randbytes
@@ -106,11 +108,24 @@ class Target:
         return SSL_CTX
 
 
-def load_targets_config(path: Path) -> Generator[Target, None, None]:
-    with path.open("r") as f:
-        for line in f.readlines():
-            if line.strip():
-                yield Target.from_string(line.strip())
+def load_file(filepath: str) -> str:
+    local_path = Path(filepath)
+    if local_path.is_file():
+        return local_path.read_text()
+
+    url = URL(filepath)
+    if url.scheme in {"http", "https"}:
+        with urlopen(filepath) as f:
+            return f.read().decode()
+
+    raise ValueError(f"Cannot open {filepath}")
+
+
+def load_targets_config(path: str) -> Generator[Target, None, None]:
+    content = load_file(path)
+    for line in content.splitlines():
+        if line.strip():
+            yield Target.from_string(line.strip())
 
 
 def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
@@ -807,9 +822,9 @@ def parse_args(available_strategies):
     )
     parser.add_argument(
         "--targets-config",
-        type=Path,
+        type=str,
         default=None,
-        help="File with the list of targets (target per line)"
+        help="File with the list of targets (target per line). Could be a local file or a link to remote resource."
     )
     parser.add_argument(
         "-c",
