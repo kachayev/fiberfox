@@ -30,6 +30,8 @@ from yarl import URL
 from urllib import parse
 from urllib.request import urlopen
 
+from static import USERAGENTS, REFERERS
+
 try:
     from random import randbytes
 except ImportError:
@@ -43,10 +45,10 @@ try:
 except OSError:
     pass
 
+
 # todo:
 # * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
 # * stats: better numbers, list of errors
-# * read referres/useragents from files
 # * run as a package "python -m fiberfox", programmatic launch
 
 
@@ -338,22 +340,8 @@ class Context:
         )
 
 
-useragents: List[str] = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169',
-    'Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.120',
-    'Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90',
-    'Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:69.0) Gecko/20100101 Firefox/69.0'
-]
-
-referrers: List[str] = [
-    "https://www.facebook.com/l.php?u=https://www.facebook.com/l.php?u=",
-    "https://www.facebook.com/sharer/sharer.php?u=https://www.facebook.com/sharer/sharer.php?u=",
-    "https://drive.google.com/viewerng/viewer?url=",
-    "https://www.google.com/translate?u="
-]
+useragents: List[str] = USERAGENTS.splitlines(False)
+referers: List[str] = REFERERS.splitlines(False)
 
 
 def spoof_ip_headers(target: Target) -> List[str]:
@@ -392,12 +380,12 @@ def http_req_payload(
     ) -> bytes:
     version = choice(["1.1", "1.2"])
     user_agent = choice(useragents)
-    referrer = choice(referrers) + parse.quote(target.url.human_repr())
+    referer = choice(referers) + parse.quote(target.url.human_repr())
     parts = [
         f"{req_type} {target.url.raw_path_qs} HTTP/{version}",
         f"Host: {target.url.authority}",
         f"User-Agent: {user_agent}",
-        f"Referrer: {referrer}",
+        f"Referrer: {referer}",
         "Accept-Encoding: gzip, deflate, br",
         "Accept-Language: en-US,en;q=0.9",
         "Cache-Control: max-age=0",

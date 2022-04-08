@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf8") as f:
 
 setup(
     name="fiberfox",
-    version="0.3.1",
+    version="0.3.2",
     packages=find_packages(),
     data_files=[],
     entry_points={
@@ -19,7 +19,7 @@ setup(
     install_requires=requirements,
     author="Oleksii Kachaiev",
     author_email="kachayev@gmail.com",
-    description="High-performance DDoS vulnerability testing toolkit. Various L4/7 attack vectors. Async networking.",
+    description="High-performance (D)DoS vulnerability testing toolkit. Various L4/7 attack vectors. Async networking.",
     long_description=readme,
     long_description_content_type="text/markdown",
     url="https://github.com/kachayev/fiberfox",
@@ -41,5 +41,4 @@ setup(
     ],
     license="MIT",
     python_requires=">=3.8",
-    include_package_data=True
 )
