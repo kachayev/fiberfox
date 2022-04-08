@@ -855,10 +855,9 @@ def parse_args(available_strategies):
         help="How long to keep sending packets, in seconds"
     )
     parser.add_argument(
-        "--proxy-providers-config",
-        type=str,
-        default=None,
-        help="Configuration file with proxy providers. Both local and remote files are supported."
+        "--proxies",
+        nargs="*",
+        help="List of proxy servers, separated by spaces (if many)"
     )
     parser.add_argument(
         "--proxies-config",
@@ -867,9 +866,10 @@ def parse_args(available_strategies):
         help="File with a list of proxy servers (newline-delimted). Both local and remote files are supported."
     )
     parser.add_argument(
-        "--proxies",
-        nargs="*",
-        help="List of proxy servers, separated by spaces (if many)"
+        "--proxy-providers-config",
+        type=str,
+        default=None,
+        help="Configuration file with proxy providers (following MHDDoS configuration file format). Both local and remote files are supported."
     )
     parser.add_argument(
         "--log-level",
