@@ -46,7 +46,6 @@ except OSError:
 # todo:
 # * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
 # * stats: better numbers, list of errors
-# * implement the rest of the attacks
 # * read referres/useragents from files
 # * run as a package "python -m fiberfox", programmatic launch
 
@@ -714,6 +713,7 @@ async def DGB(ctx: Context, fid: int, target: Target):
     connections.
     """
     pass
+
 
 async def flood_fiber(ctx: Context, fid: int, target: Target):
     ctx.start_session(fid, target)
