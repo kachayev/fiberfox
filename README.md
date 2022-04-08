@@ -96,11 +96,18 @@ Note: the package is under active development, more methods will be added soon.
 
 ### L4
 
-* `UDP`
-* `TCP`
-* `CONNECTION`
+L4 attacks are designed to target transport layers thus are mainly used to overload network. Requires minimum knowledge of the target.
+
+
+| Strategy   | Layer | Transport | Design | Notes |
+|----------- |-------|-----------|--------|-------|
+| `UDP` | L4 | UDP | Simple flood: sends randomly generated UDP packets to the target | Automatically throttles fiber on receiving `NO_BUFFER_AVAILABLE` from the <br> network device. To prevent this from happening do not configure more than <br> 2 fibers per target when testing UDP flood attack. |
+| `TCP` | L4 | TCP | Simple flood: sends RPC randomly generated TCP packets into open TCP connection. | Supports configuration for the size of the package and<br> number of packages to be sent into each open connection. |
+| `CONNECTION` | L4 | TCP | Opens TCP connections and keeps it alives as long as possible. | To be effective, this type of attack requires higher number of<br> fibers than usual. Note that modern servers are pretty good with <br>handling open inactive connections. |
 
 ### L7
+
+L7 attacks are designed to abuse weaknesses in application layer protocols or specific implementation details of applications (or OS kernels). Generally more powerful but might require knowledge of how targeted system works.
 
 * `GET`
 * `STRESS`

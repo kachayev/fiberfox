@@ -519,6 +519,14 @@ async def flood_packets_gen(
 
 
 async def UDP(ctx: Context, fid: int, target: Target):
+    """Sends randomly generated UDP packets to the target (UDP port).
+
+    Layer: L4.
+
+    Automatically throttles fiber on receiving NO_BUFFER_AVAILABLE from the
+    network device. To prevent this from happening do not configure more than
+    2 fibers per target when testing UDP flood attack.
+    """
     async with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         running = True
         while running:
@@ -549,7 +557,7 @@ async def TCP(ctx: Context, fid: int, target: Target):
 
 
 async def GET(ctx: Context, fid: int, target: Target):
-    """Sends RPC randomly generated HTTP GET requests into open TCP connection.
+    """Sends RPC randomly generated HTTP GET requests overn an open TCP connection.
 
     Layer: L7.
     """
@@ -562,7 +570,10 @@ async def GET(ctx: Context, fid: int, target: Target):
 
 
 async def STRESS(ctx: Context, fid: int, target: Target):
-    """Sends large HTTP packates.
+    """Sends a sequence of HTTP requests with large body over a single
+    open TCP connection.
+
+    Layer: L7.
 
     To maximize performance, make sure that target host allows
     pipelining (sending new request within persistent connection without
@@ -582,7 +593,10 @@ async def STRESS(ctx: Context, fid: int, target: Target):
 
 
 async def BYPASS(ctx: Context, fid: int, target: Target):
-    """Sends HTTP get requests (RPC requests per TCP connection)."""
+    """Sends HTTP get requests (RPC requests per TCP connection).
+
+    Layer: L7.
+    """
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             for _ in range(ctx.rpc):
