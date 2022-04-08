@@ -593,9 +593,12 @@ async def STRESS(ctx: Context, fid: int, target: Target):
 
 
 async def BYPASS(ctx: Context, fid: int, target: Target):
-    """Sends HTTP get requests (RPC requests per TCP connection).
+    """Sends HTTP get requests over open TCP connection, reads response back.
 
     Layer: L7.
+
+    Chunked reading is performed by `recv` bytes from the the connection, without
+    parsing into HTTP response.
     """
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
@@ -664,7 +667,8 @@ async def SLOW(ctx: Context, fid: int, target: Target):
 
 # xxx(okachaiev): configuration for delay and for timeout
 async def CFBUAM(ctx: Context, fid: int, target: Target):
-    """Sends a single HTTP GET, after a long delay issues RPC new requests.
+    """Sends a single HTTP GET, after a long delay issues more requests
+    over the same TCP connection.
 
     Layer: L7.
     """

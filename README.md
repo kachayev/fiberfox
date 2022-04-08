@@ -101,20 +101,22 @@ L4 attacks are designed to target transport layers thus are mainly used to overl
 
 | Strategy   | Layer | Transport | Design | Notes |
 |----------- |-------|-----------|--------|-------|
-| `UDP` | L4 | UDP | Simple flood: sends randomly generated UDP packets to the target | Automatically throttles fiber on receiving `NO_BUFFER_AVAILABLE` from the <br> network device. To prevent this from happening do not configure more than <br> 2 fibers per target when testing UDP flood attack. |
-| `TCP` | L4 | TCP | Simple flood: sends RPC randomly generated TCP packets into open TCP connection. | Supports configuration for the size of the package and<br> number of packages to be sent into each open connection. |
-| `CONNECTION` | L4 | TCP | Opens TCP connections and keeps it alives as long as possible. | To be effective, this type of attack requires higher number of<br> fibers than usual. Note that modern servers are pretty good with <br>handling open inactive connections. |
+| `UDP` | L4 | UDP | Simple flood: sends randomly generated UDP packets to the target | Automatically throttles fiber on receiving `NO_BUFFER_AVAILABLE` from the network device. To prevent this from happening do not configure more than 2 fibers per target when testing UDP flood attack. |
+| `TCP` | L4 | TCP | Simple flood: sends RPC randomly generated TCP packets into open TCP connection. | Supports configuration for the size of the package and number of packages to be sent into each open connection. |
+| `CONNECTION` | L4 | TCP | Opens TCP connections and keeps it alives as long as possible. | To be effective, this type of attack requires higher number of fibers than usual. Note that modern servers are pretty good with handling open inactive connections. |
 
 ### L7
 
 L7 attacks are designed to abuse weaknesses in application layer protocols or specific implementation details of applications (or OS kernels). Generally more powerful but might require knowledge of how targeted system works.
 
-* `GET`
-* `STRESS`
-* `BYPASS`
-* `CFBUAM`
-* `SLOW`
-* `AVB`
+| Strategy   | Layer | Transport | Design | Notes |
+|----------- |-------|-----------|--------|-------|
+| `GET` | L7 | TCP | Sends randomly generated HTTP GET requests overn an open TCP connection | |
+| `STRESS` | L7 | TCP | Sends a sequence of HTTP requests with large body over a single open TCP connection. | To maximize performance, make sure that target host allows pipelining (sending new request within persistent connection without reading response first). |
+| `BYPASS` | L7 | TCP | Sends HTTP get requests over open TCP connection, reads response back. | Chunked reading is performed by `recv` bytes from the the connection, without parsing into HTTP response. |
+| `SLOW` | L7 | TCP | Similary to STRESS, issues HTTP requests and makes an attempt to keep connection utilized by reading back a single byte and sending additional payload with time delays between send operations. |  Ideally, time delay should be setup properly to avoid connection being reset by the peer because of read timeout (depends on peer setup). |
+| `CFBUAM` | L7 | TCP | Sends a single HTTP GET, after a long delay issues more requests over the same TCP connection. | |
+| `AVB` | L7 | TCP | Isses HTTP GET packets into an open connection with long delays between send operations. To avoid the connection being reset by the peer because of read timeout, maximum delay is set to 1 second. | |
 
 
 ## Proxies
