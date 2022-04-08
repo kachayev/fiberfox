@@ -30,7 +30,7 @@ from yarl import URL
 from urllib import parse
 from urllib.request import urlopen
 
-from static import USERAGENTS, REFERERS
+from fiberfox.static import USERAGENTS, REFERERS
 
 try:
     from random import randbytes
@@ -741,7 +741,7 @@ async def flood(ctx: Context):
 
     group = curio.TaskGroup()
     print(f"==> Launching {ctx.num_fibers} fibers "
-          f"testing {len(ctx.targets)} targets for {ctx.duration_seconds}s")
+          f"to test {len(ctx.targets)} targets for {ctx.duration_seconds}s")
     for fid in range(ctx.num_fibers):
         await group.spawn(flood_fiber_loop, ctx, fid)
 
