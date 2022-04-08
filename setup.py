@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf8") as f:
 
 setup(
     name="fiberfox",
-    version="0.3.2",
+    version="0.3.3",
     packages=find_packages(),
     data_files=[],
     entry_points={
