@@ -105,6 +105,26 @@ L4 attacks are designed to target transport layers thus are mainly used to overl
 | `TCP` | L4 | TCP | Simple flood: sends RPC randomly generated TCP packets into open TCP connection. | Supports configuration for the size of the package and number of packages to be sent into each open connection. |
 | `CONNECTION` | L4 | TCP | Opens TCP connections and keeps it alives as long as possible. | To be effective, this type of attack requires higher number of fibers than usual. Note that modern servers are pretty good with handling open inactive connections. |
 
+### UDP-based Amplification Attacks
+
+Special class of L4 attacks.
+
+UDP is a connectionless protocol. It does not validate source IP address unless explicit processing is done by the application layer. It means that attacker can easily forge the datagram to include an arbitrary source IP address. Oftentimes the application protocol is designed in a way that the packet generated in response is much larger in size which creates amplification effect (hence the name). By sending such datagram to many different servers (reflectors), the attacker can generate significant traffit to the target (victim) device.
+
+Amplification attacks implemented:
+
+| Strategy | Protocol | Amplification Factor | Vulnerability |
+|---|---|---|---|
+| `RDP` | Remote Desktop Protocol (RDP) | | | 
+| `CLDAP` | Connection-less Lightweight Directory Access Protocol (CLDAP) | 56 yo 70 | |
+| `MEM` | Memcached | 10,000 to 50,000 | |
+| `CHAR` | Character Generator Protocol (CHARGEN) | 358.8 | Char generation request |
+| `ARD` | Apple Remote Desktop (ARD) | | | 
+| `NTP` | Network Time Protocol (NTP) | 556.9 | [TA14-013A](https://www.cisa.gov/uscert/ncas/alerts/TA14-013A) |
+| `DNS` | Domain Name System (DNS) | 28 to 54 | [TA13-088A](https://www.cisa.gov/uscert/ncas/alerts/TA13-088A) |
+
+All amplication attacks require lift of reflection servers to be provided.
+
 ### L7
 
 L7 attacks are designed to abuse weaknesses in application layer protocols or specific implementation details of applications (or OS kernels). Generally more powerful but might require knowledge of how targeted system works.
