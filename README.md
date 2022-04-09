@@ -131,8 +131,8 @@ L7 attacks are designed to abuse weaknesses in application layer protocols or sp
 
 | Strategy   | Layer | Transport | Design | Notes |
 |----------- |-------|-----------|--------|-------|
-| `GET` | L7 | TCP | Sends randomly generated HTTP GET requests overn an open TCP connection | |
-| `STRESS` | L7 | TCP | Sends a sequence of HTTP requests with large body over a single open TCP connection. | To maximize performance, make sure that target host allows pipelining (sending new request within persistent connection without reading response first). |
+| `GET` | L7 | TCP | Sends randomly generated HTTP GET requests overn an open TCP connection | Does not require 200 OK HTTP response code (as it doesn't consume response at all). Though attack performed against load balancer or WAF might not be effective (compared to L4 TCP flood). |
+| `STRESS` | L7 | TCP | Sends a sequence of HTTP requests with large body over a single open TCP connection. | To maximize performance, make sure that target host allows pipelining (sending new request within persistent connection without reading response first). Does not require 200 OK HTTP response code (as it doesn't consume response at all). Though attack performed against load balancer or WAF might not be effective (compared to L4 TCP flood). |
 | `BYPASS` | L7 | TCP | Sends HTTP get requests over open TCP connection, reads response back. | Chunked reading is performed by `recv` bytes from the the connection, without parsing into HTTP response. |
 | `SLOW` | L7 | TCP | Similary to STRESS, issues HTTP requests and makes an attempt to keep connection utilized by reading back a single byte and sending additional payload with time delays between send operations. |  Ideally, time delay should be setup properly to avoid connection being reset by the peer because of read timeout (depends on peer setup). |
 | `CFBUAM` | L7 | TCP | Sends a single HTTP GET, after a long delay issues more requests over the same TCP connection. | |
