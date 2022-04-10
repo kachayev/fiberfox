@@ -82,6 +82,8 @@ options:
                         File with a list of proxy servers (newline-delimited). Both local and remote files are supported.
   --proxy-providers-config PROXY_PROVIDERS_CONFIG
                         Configuration file with proxy providers (following MHDDoS configuration file format). Both local and remote files are supported.
+  --reflectors-config REFLECTORS_CONFIG
+                        File with the list of reflector servers (IP per line). Only required for amplification attacks. Both local and remote files are supported.
   --log-level {DEBUG,INFO,ERROR,WARN}
                         Log level (defaults to INFO)
   --connection-timeout-seconds CONNECTION_TIMEOUT_SECONDS
@@ -156,7 +158,7 @@ One of the goals of the toolkit is to provide comprehensive monitoring informati
 
 The tool reports number of statistics per each target: number of packets, traffic, and rate. For TCP-based attacks (both L4 and L7), it also reports a histogram of packets sent within a single session (session here means traffic sent within a single open connection). Ideally, the histogram should be skewed towards the left side. It means the peer closes the connection earlier than "requests per connection" packets were sent. If it's mainly on the right, the target accepts what should be considered "garbage traffic".
 
-Be careful with analysis. Low network rate, high frequency of connection attempts, high error rate, and more. All of those signals might indicate both the fact that the target stays strong facing the attack and that it's already dead. To get full understanding of the level of protection, you should use monitoring information on the target side (e.g. capability to work correctly when being challenged).
+Be careful with analysis. Low network rate, high frequency of connection attempts, high error rate, and more. All of those signals might indicate both the fact that the target stays strong facing the attack and that it's already dead. To get a full understanding of the level of protection, you should use monitoring information on the target side (e.g. capability to work correctly when being challenged).
 
 ## Contribute
 

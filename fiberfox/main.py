@@ -126,11 +126,16 @@ def load_file(filepath: str) -> str:
     raise ValueError(f"Cannot open {filepath}")
 
 
-def load_targets_config(path: str) -> Generator[Target, None, None]:
+def load_file_lines(path: str) -> Generator[str, None, None]:
     content = load_file(path)
     for line in content.splitlines():
         if line.strip():
-            yield Target.from_string(line.strip())
+            yield line.strip()
+
+
+def load_targets_config(path: str) -> Generator[Target, None, None]:
+    for line in load_file_lines(path):
+            yield Target.from_string(line)
 
 
 def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
@@ -281,6 +286,7 @@ class Context:
         targets: List[Target],
         strategy: Callable[["Context", int, Target], None],
         proxies: Optional[ProxySet] = None,
+        reflectors: Optional[List[str]] = None,
         num_fibers: int = 20,
         packet_size: int = 1024,
         rpc: int = 1000,
@@ -293,6 +299,7 @@ class Context:
         self.targets_iter = cycle(targets)
         self.strategy = strategy
         self.proxies = proxies
+        self.reflectors = reflectors
         self.num_fibers = num_fibers
         self.packet_size = packet_size
         self.rpc = rpc
@@ -331,11 +338,13 @@ class Context:
         if args.targets_config is not None:
             targets.extend(load_targets_config(args.targets_config))
         targets.extend(Target.from_string(t.strip()) for t in args.targets or [])
+        rfs = list(load_file_lines(args.reflectors_config)) if args.reflectors_config else []
         return cls(
             args=args,
             targets=targets,
             num_fibers=args.concurrency,
             strategy=args.strategy,
+            reflectors=rfs,
             rpc=args.rpc,
             packet_size=args.packet_size,
             duration_seconds=args.duration_seconds,
@@ -1078,6 +1087,12 @@ def parse_args(available_strategies):
         type=str,
         default=None,
         help="Configuration file with proxy providers (following MHDDoS configuration file format). Both local and remote files are supported."
+    )
+    parser.add_argument(
+        "--reflectors-config",
+        type=str,
+        default=None,
+        help="File with the list of reflector servers (IP per line). Only required for amplification attacks. Both local and remote files are supported."
     )
     parser.add_argument(
         "--log-level",
