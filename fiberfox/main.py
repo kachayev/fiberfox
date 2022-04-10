@@ -1052,7 +1052,7 @@ def parse_args(available_strategies):
         "--proxies-config",
         type=str,
         default=None,
-        help="File with a list of proxy servers (newline-delimted). Both local and remote files are supported."
+        help="File with a list of proxy servers (newline-delimited). Both local and remote files are supported."
     )
     parser.add_argument(
         "--proxy-providers-config",
