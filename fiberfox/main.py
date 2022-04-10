@@ -568,6 +568,7 @@ async def UDP(ctx: Context, fid: int, target: Target):
                     running = False
                     ctx.track_error(exc)
 
+
 def ampl_packets_gen(reflectors: List[str], target: Target, payload: bytes, ampl_port: int):
     def gen():
         for ref in reflectors:
@@ -642,7 +643,9 @@ async def MEMCACHED(ctx: Context, fid: int, target: Target):
 
 
 async def CHAR(ctx: Context, fid: int, target: Target):
-    """
+    """Leverages Character Generator Protocol (CharGEN) to launch amplification
+    (reflection) attack.
+
     Layer: L4.
 
     Requires list of reflection servers to be provided.
@@ -652,8 +655,8 @@ async def CHAR(ctx: Context, fid: int, target: Target):
 
 
 async def ARD(ctx: Context, fid: int, target: Target):
-    """Leverages MacOS Apple Remote Desktop (ARD) service to launche
-    amplification (reflection) attack.
+    """Leverages MacOS Apple Remote Desktop (ARD) service to launch amplification
+    (reflection) attack.
 
     Layer: L4.
 
@@ -704,9 +707,12 @@ async def DNS(ctx: Context, fid: int, target: Target):
 
 
 async def TCP(ctx: Context, fid: int, target: Target):
-    """Sends RPC randomly generated TCP packets into open TCP connection.
+    """Simple flood: sends RPC randomly generated TCP packets into an open TCP connection.
 
     Layer: L4.
+
+    Supports configuration for the size of a single packet and the number of packets
+    to be sent into each open connection.
     """
     async def gen():
         for _ in range(ctx.rpc):
@@ -716,9 +722,13 @@ async def TCP(ctx: Context, fid: int, target: Target):
 
 
 async def GET(ctx: Context, fid: int, target: Target):
-    """Sends RPC randomly generated HTTP GET requests overn an open TCP connection.
+    """Sends randomly generated HTTP GET requests over an open TCP connection.
 
     Layer: L7.
+
+    Does not require 200 OK HTTP response code (as it doesn't consume response at all).
+    Though attack performed against load balancer or WAF might not be effective
+    (compared to L4 TCP flood).
     """
     async def gen():
         req: bytes = http_req_get(target)
@@ -729,14 +739,15 @@ async def GET(ctx: Context, fid: int, target: Target):
 
 
 async def STRESS(ctx: Context, fid: int, target: Target):
-    """Sends a sequence of HTTP requests with large body over a single
-    open TCP connection.
-
+    """Sends a sequence of HTTP requests with a large body over a single open TCP connection.
+    
     Layer: L7.
 
-    To maximize performance, make sure that target host allows
-    pipelining (sending new request within persistent connection without
-    reading response first).
+    To maximize performance, make sure that the target host allows pipelining
+    (sending a new request within a persistent connection without reading the
+    response first). Does not require 200 OK HTTP response code (as it doesn't
+    consume the response at all). Though attack performed against load balancer
+    or WAF might not be effective (compared to L4 TCP flood).
     """
     async def gen():
         for _ in range(ctx.rpc):
@@ -752,12 +763,12 @@ async def STRESS(ctx: Context, fid: int, target: Target):
 
 
 async def BYPASS(ctx: Context, fid: int, target: Target):
-    """Sends HTTP get requests over open TCP connection, reads response back.
+    """Sends HTTP get requests over an open TCP connection, reads response back.
 
     Layer: L7.
 
-    Chunked reading is performed by `recv` bytes from the the connection, without
-    parsing into HTTP response.
+    Chunked reading is performed by `recv` bytes from the connection,
+    without parsing into HTTP response.
     """
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
@@ -776,13 +787,14 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
 
 
 async def CONNECTION(ctx: Context, fid: int, target: Target):
-    """Opens TCP connections and keeps it alives as long as possible.
+    """Opens TCP connections and keeps them alive as long as possible.
 
     Layer: L4.
 
-    To be effective, this type of attack requires higher number of
-    fibers than usual. Note that modern servers are pretty good with
-    handling open inactive connections."""
+    To be effective, this type of attack requires a higher number of fibers
+    than usual. Note that modern servers are pretty good at handling open
+    inactive connections.
+    """
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             conn.mark_packet_sent()
@@ -792,16 +804,14 @@ async def CONNECTION(ctx: Context, fid: int, target: Target):
 
 # xxx(okachaiev): configuration for time delay
 async def SLOW(ctx: Context, fid: int, target: Target):
-    """Similary to STRESS, issues RPC HTTP requests and makes an
-    attempt to keep connection utilized by reading back a single byte
-    and sending additional payload with time delays between
-    send operations.
+    """Similarly to STRESS, issues HTTP requests and attempts to keep
+    connection utilized by reading back a single byte and sending additional
+    payload with time delays between send operations.
 
     Layer: L7.
 
-    Ideally, time delay should be setup properly
-    to avoid connection being reset by the peer because of read
-    timeout (depends on peer setup).
+    Ideally, time delay should be set up properly to avoid connection being
+    reset by the peer because of read timeout (depends on peer setup).
     """
     # xxx(okachaiev): should this be generated randomly each time?
     req: bytes = http_req_payload(target, "GET")
@@ -847,10 +857,9 @@ async def CFBUAM(ctx: Context, fid: int, target: Target):
 
 # xxx(okachaiev): flexible delay configuration
 async def AVB(ctx: Context, fid: int, target: Target):
-    """Isses HTTP GET packets into the open connection with long
-    delays between send operations. To avoid the connection being
-    reset by the peer because of read timeout, maximum delay is set
-    to 1 second.
+    """Issues HTTP GET packets into an open connection with long delays
+    between send operations. To avoid the connection being reset by the
+    peer because of read timeout, the maximum delay is set to 1 second.
 
     Layer: L7.
     """
