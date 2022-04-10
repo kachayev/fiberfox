@@ -2,7 +2,7 @@
 
 High-performance (D)DoS vulnerability testing toolkit. Implements various L4/7 attack vectors. The async approach to networking helps to lower CPU/RAM requirements while performing even complex network interactions.
 
-**NOTE**👻 The toolkit doesn't have the capabilities needed for proper performance testing of the target servers or networks. The goal is to understand the level of protection, by performing attacks specially designed to abuse common pitfalls and bypass common protection measures.
+**NOTE** 👻 The toolkit doesn't have the capabilities needed for proper performance testing of the target servers or networks. The goal is to understand the level of protection, by performing attacks specially designed to abuse common pitfalls and bypass common protection measures.
 
 **WARNING**❗ Do not test infrastructure (servers, websites, network devices, etc) without the owner's consent. Package default settings are tuned to avoid a large unintended impact when running tests.
 
