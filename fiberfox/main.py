@@ -75,9 +75,12 @@ def humanbytes(i: int, binary: bool = False, precision: int = 2):
 PROTOCOLS = {"tcp", "http", "https", "udp", "socks4", "socks5"}
 RE_IPPORT = re.compile("^((?:\d+.){3}\d+):(\d{1,5})$")
 
-SSL_CTX = ssl.create_default_context(cafile=where())
+SSL_CTX: ssl.SSLContext = ssl.create_default_context(cafile=where())
 SSL_CTX.check_hostname = False
 SSL_CTX.verify_mode = ssl.CERT_NONE
+# to deal with changes to default ciphers in Python3.10+
+# https://bugs.python.org/issue43998
+SSL_CTX.set_ciphers("DEFAULT")
 
 ERR_NO_BUFFER_AVAILABLE = 55
 
