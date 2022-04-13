@@ -1063,7 +1063,7 @@ def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
         f"errors registered: {ctx.num_errors}. "
         f"Enjoy the results:")
     print(tabulate(
-        rows, headers=["Target", "Sessions", "Packets", "Traffic", "Rate", "Quality"]))
+        rows, headers=["Target", "Sessions", "Packets", "Traffic", "Rate (Out)", "Quality"]))
 
 
 default_strategies = {
