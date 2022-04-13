@@ -280,6 +280,7 @@ class ProxySet:
 class Stats:
     def __init__(self, hist_buckets: int = 10, hist_max: int = 1024):
         self.total_bytes_sent: int = 0
+        self.total_elapsed_seconds: int = 0
         self.packets_sent: int = 0
         self._hist_buckets: int = hist_buckets
         self._hist_max: int = hist_max
@@ -288,8 +289,9 @@ class Stats:
         self.packets_per_session: List[int] = [0]*(self._hist_buckets+1)
         self.num_sessions: int = 0
 
-    def track_packet_sent(self, fid: int, size: int) -> None:
+    def track_packet_sent(self, fid: int, size: int, elapsed_seconds: int = 0) -> None:
         self.total_bytes_sent += size
+        self.total_elapsed_seconds += elapsed_seconds
         self.packets_sent += 1
         if self._hist_buckets > 0:
             self.current_session[fid] += 1
@@ -348,9 +350,15 @@ class Context:
     def connection_timeout(self):
         return min(self.connection_timeout_seconds, self.duration_seconds)
 
-    def track_packet_sent(self, fid: int, target: Target, size: int) -> None:
+    def track_packet_sent(
+        self,
+        fid: int,
+        target: Target,
+        size: int,
+        elapsed_seconds: int = 0
+    ) -> None:
         if size > 0:
-            self.stats[target.url].track_packet_sent(fid, size)
+            self.stats[target.url].track_packet_sent(fid, size, elapsed_seconds)
 
     def start_session(self, fid: int, target: Target) -> None:
         self.stats[target.url].start_session(fid)
@@ -532,8 +540,10 @@ async def flood_packets_gen(
         stream = conn.as_stream()
         async with curio.meta.finalize(packets) as packets:
             async for payload in packets:
+                # not the most accurate time measure
+                start = time.time()
                 await stream.write(payload)
-                ctx.track_packet_sent(fid, target, len(payload))
+                ctx.track_packet_sent(fid, target, len(payload), time.time()-start)
                 packet_sent += 1
     except curio.TaskTimeout:
         # xxx(okachaiev): how to differentiate proxy connection vs. target connection?
@@ -573,8 +583,9 @@ async def flood_ampl_packates_gen(
         async with curio.meta.finalize(packets) as packets:
             async for (payload, dest) in packets:
                 try:
+                    now = time.time()
                     sent = await sock.sendto(payload, dest)
-                    ctx.track_packet_sent(fid, target, len(payload))
+                    ctx.track_packet_sent(fid, target, len(payload), time.time()-now)
                     if sent == 0: return
                 except OSError as exc:
                     if exc.errno == ERR_NO_BUFFER_AVAILABLE:
@@ -824,7 +835,9 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
         if conn.sock:
             for _ in range(ctx.rpc):
                 req, chunks = http_req_get(target), []
+                now = time.time()
                 bytes_sent = await conn.sock.sendall(req)
+                elapsed = time.time() - now
                 if bytes_sent is None or bytes_sent == len(req):
                     while True:
                         chunk = await conn.sock.recv(1024)
@@ -833,7 +846,8 @@ async def BYPASS(ctx: Context, fid: int, target: Target):
                         chunks.append(chunk)
                 else:
                     ctx.logger.error(f"connection closed: {bytes_sent}/{len(req)}")
-                ctx.track_packet_sent(fid, target, (bytes_sent or 0) + sum(map(len, chunks)))
+                total_size = (bytes_sent or 0) + sum(map(len, chunks))
+                ctx.track_packet_sent(fid, target,  total_size, elapsed)
 
 
 async def CONNECTION(ctx: Context, fid: int, target: Target):
@@ -868,19 +882,26 @@ async def SLOW(ctx: Context, fid: int, target: Target):
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
             for _ in range(ctx.rpc):
+                now = time.time()
                 bytes_sent = await conn.sock.sendall(req)
-                ctx.track_packet_sent(fid, target, bytes_sent or 0)
+                elapsed = time.time() - now
+                ctx.track_packet_sent(fid, target, bytes_sent or 0, elapsed)
             while True:
+                now = time.time()
                 bytes_sent = await conn.sock.sendall(req)
+                elapsed = time.time() - now
                 if bytes_sent is not None and bytes_sent < len(req):
                     break
                 await conn.sock.recv(1)
                 header = f"X-a: {randint(1,5000)}\r\n".encode()
+                now = time.time()
                 header_bytes_sent = await conn.sock.sendall(header)
+                elapsed += time.time() - now
                 # xxx(okachaiev): this will overflow as we are sending too many
                 # requests here (infinitely more than RPC). need to find a wayt
                 # to track this properly
-                ctx.track_packet_sent(fid, target, (bytes_sent or 0)+(header_bytes_sent or 0))
+                total_size = (bytes_sent or 0) + (header_bytes_sent or 0)
+                ctx.track_packet_sent(fid, target, total_size, elapsed)
                 await curio.sleep(ctx.rpc/15) # xxx(okachaiev): too long?
 
 
@@ -895,14 +916,19 @@ async def CFBUAM(ctx: Context, fid: int, target: Target):
     req: bytes = http_req_payload(target, "GET")
     async with TcpConnection(ctx, target) as conn:
         if conn.sock:
+            now = time.time()
             bytes_sent = await conn.sock.sendall(req)
+            elapsed = time.time() - now
+            ctx.track_packet_sent(fid, target, bytes_sent or 0, elapsed)
             if bytes_sent is not None and bytes_sent < len(req): return
             await curio.sleep(5.01)
             with curio.ignore_after(120):
                 for _ in range(ctx.rpc):
+                    now = time.time()
                     bytes_sent = await conn.sock.sendall(req)
+                    elapsed = time.time() - now
                     if bytes_sent is not None and bytes_sent < len(req): return
-                    ctx.track_packet_sent(fid, target, bytes_sent or 0)
+                    ctx.track_packet_sent(fid, target, bytes_sent or 0, elapsed)
 
 
 # xxx(okachaiev): flexible delay configuration
@@ -1000,8 +1026,12 @@ async def flood(ctx: Context):
 def show_stats(ctx: Context, elapsed_seconds: int, sign="🦊"):
     for target in ctx.targets:
         total_bytes_sent = ctx.stats[target.url].total_bytes_sent
+        total_elapsed_seconds = ctx.stats[target.url].total_elapsed_seconds
         bytes_sent_repr = humanbytes(total_bytes_sent, True)
-        rate = humanbytes(total_bytes_sent/elapsed_seconds, True)
+        if total_elapsed_seconds == 0:
+            rate = "--"
+        else:
+            rate = humanbytes(total_bytes_sent/total_elapsed_seconds, True)
         progress = 100*elapsed_seconds/ctx.duration_seconds
         ctx.logger.info(
             f"{sign} {target.url}\t{progress:0.2f}%\t"
@@ -1013,8 +1043,12 @@ def show_final_stats(ctx: Context, elapsed_seconds: int, sign=""):
     rows = []
     for target in ctx.targets:
         total_bytes_sent = ctx.stats[target.url].total_bytes_sent
+        total_elapsed_seconds = ctx.stats[target.url].total_elapsed_seconds
         bytes_sent_repr = humanbytes(total_bytes_sent, True)
-        rate = humanbytes(total_bytes_sent/elapsed_seconds, True)
+        if total_elapsed_seconds == 0:
+            rate = "--"
+        else:
+            rate = humanbytes(total_bytes_sent/total_elapsed_seconds, True)
         buckets = ctx.stats[target.url].packets_per_session
         rows.append([
             target.url,
