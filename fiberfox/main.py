@@ -4,10 +4,13 @@ from argparse import ArgumentParser, Namespace
 import asks
 from certifi import where
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress, asynccontextmanager
 import curio
 from curio import ssl, socket
 from dataclasses import dataclass, field
+import dns
+import dns.resolver
 from functools import partial
 import json
 from impacket.ImpactPacket import Data, IP, UDP
@@ -48,15 +51,56 @@ except OSError:
 
 
 # todo:
-# * keep proxies cache in the file, reload proxies, retry after "dead", "kill switch"
+# * fix historgram tracker, fix rate calculator, split incoming/outgoing
 # * stats: better numbers, list of errors
 # * run as a package "python -m fiberfox", programmatic launch
 
 
 basicConfig(format="[%(asctime)s - %(levelname)s] %(message)s", datefmt="%H:%M:%S")
 
+
 Dest = Tuple[str, int]
 PacketData = Tuple[bytes, Dest]
+
+
+PROTOCOLS = {"tcp", "http", "https", "udp", "socks4", "socks5"}
+RE_IPPORT = re.compile("^((?:\d+.){3}\d+):(\d{1,5})$")
+
+
+SSL_CTX: ssl.SSLContext = ssl.create_default_context(cafile=where())
+SSL_CTX.check_hostname = False
+SSL_CTX.verify_mode = ssl.CERT_NONE
+# to deal with changes to default ciphers in Python3.10+
+# https://bugs.python.org/issue43998
+SSL_CTX.set_ciphers("DEFAULT")
+
+
+ERR_NO_BUFFER_AVAILABLE = 55
+
+
+# on receive this error, the proxy should be removed from the pool
+IRRECOVERABLE_PROXY_ERRORS: List[str] = [
+    "407 Proxy Authentication Required",
+    "Invalid proxy response",
+    "Unexpected SOCKS version number",
+]
+
+
+DNS_RESOLVER = dns.resolver.Resolver(configure=False)
+DNS_RESOLVER.nameservers = [
+    "1.1.1.1",
+    "1.0.0.1",
+    "8.8.8.8",
+    "8.8.4.4",
+    "208.67.222.222",
+    "208.67.220.220"
+]
+
+
+# xxx(okachaiev): we can make resolve of all hosts faster using thread pool
+def resolve_host(host: str) -> str:
+    if dns.inet.is_address(host): return host
+    return DNS_RESOLVER.resolve(host)[0].to_text()
 
 
 # xxx(okachaiev): try out "hummanize" package
@@ -70,26 +114,6 @@ def humanbytes(i: int, binary: bool = False, precision: int = 2):
     value = i / pow(base, multiple)
     suffix = multiplies[multiple].format("i" if binary else "")
     return f"{value:.{precision}f} {suffix}"
-
-
-PROTOCOLS = {"tcp", "http", "https", "udp", "socks4", "socks5"}
-RE_IPPORT = re.compile("^((?:\d+.){3}\d+):(\d{1,5})$")
-
-SSL_CTX: ssl.SSLContext = ssl.create_default_context(cafile=where())
-SSL_CTX.check_hostname = False
-SSL_CTX.verify_mode = ssl.CERT_NONE
-# to deal with changes to default ciphers in Python3.10+
-# https://bugs.python.org/issue43998
-SSL_CTX.set_ciphers("DEFAULT")
-
-ERR_NO_BUFFER_AVAILABLE = 55
-
-# on receive this error, the proxy should be removed from the pool
-IRRECOVERABLE_PROXY_ERRORS: List[str] = [
-    "407 Proxy Authentication Required",
-    "Invalid proxy response",
-    "Unexpected SOCKS version number",
-]
 
 
 @dataclass
@@ -107,7 +131,7 @@ class Target:
             url = URL(f"tcp://{target}")
         # the configuration is only setup in the beginning
         # so there's no need we are completely fine doing this synchronosly
-        addr = syncsocket.gethostbyname(url.host) if resolve_addr else url.host
+        addr = resolve_host(url.host) if resolve_addr else url.host
         return cls(protocol=url.scheme.lower(), addr=addr, port=int(url.port or 80), url=url)
 
     @property
@@ -136,9 +160,13 @@ def load_file_lines(path: str) -> Generator[str, None, None]:
             yield line.strip()
 
 
-def load_targets_config(path: str) -> Generator[Target, None, None]:
-    for line in load_file_lines(path):
-            yield Target.from_string(line)
+def load_targets_config(path: str, pool_size: int = 0) -> List[Target]:
+    lines =  load_file_lines(path)
+    if pool_size == 0:
+        return list(map(Target.from_string, lines))
+    else:
+        with ThreadPoolExecutor(max_workers=pool_size) as executor:
+            return list(executor.map(Target.from_string, lines))
 
 
 def proxy_type_to_protocol(proxy_type: Union[int, str]) -> str:
@@ -339,7 +367,7 @@ class Context:
     def from_args(cls, args: Namespace) -> "Context":
         targets = []
         if args.targets_config is not None:
-            targets.extend(load_targets_config(args.targets_config))
+            targets.extend(load_targets_config(args.targets_config, pool_size=10))
         targets.extend(Target.from_string(t.strip()) for t in args.targets or [])
         rfs = list(load_file_lines(args.reflectors_config)) if args.reflectors_config else []
         return cls(

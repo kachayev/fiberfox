@@ -1,6 +1,7 @@
 asks==2.4.12
 certifi==2021.10.8
 curio==1.5
+dnspython==2.2.1
 impacket==0.9.23
 python-socks==2.0.3
 sparklines==0.4.2
