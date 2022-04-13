@@ -160,6 +160,8 @@ The tool reports number of statistics per each target: number of packets, traffi
 
 Be careful with analysis. Low network rate, high frequency of connection attempts, high error rate, and more. All of those signals might indicate both the fact that the target stays strong facing the attack and that it's already dead. To get a full understanding of the level of protection, you should use monitoring information on the target side (e.g. capability to work correctly when being challenged).
 
+Note that outbound rate is show approximately. The time measurement for sending every packet includes scheduling delays (for fibers) and select/pooling. In most cases those are negligable. Though be careful with the analysis when running 10k+ fibers.
+
 ## Contribute
 
 * Check for open issues or open a fresh issue to start a discussion around a feature idea or a bug.
