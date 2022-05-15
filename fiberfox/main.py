@@ -902,7 +902,7 @@ async def SLOW(ctx: Context, fid: int, target: Target):
                 # to track this properly
                 total_size = (bytes_sent or 0) + (header_bytes_sent or 0)
                 ctx.track_packet_sent(fid, target, total_size, elapsed)
-                await curio.sleep(ctx.rpc/15) # xxx(okachaiev): too long?
+                await curio.sleep(ctx.rpc/1) # xxx(okachaiev): too long?
 
 
 # xxx(okachaiev): configuration for delay and for timeout
